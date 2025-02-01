@@ -43,6 +43,7 @@ export async function runMultiple(
     pause: number = 0,
 ) {
     const result = [];
+
     for (let i = 0; i < runs; i++) {
         const cmd = await run(program, args, clean, envfile);
         result.push(cmd);
@@ -52,6 +53,8 @@ export async function runMultiple(
             await sleep(pause * 1000);
         }
     }
+
+    return result;
 }
 
 export async function runForever(
