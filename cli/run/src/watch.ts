@@ -1,20 +1,10 @@
 #!/usr/bin/env bun
 
-import chokidar from "chokidar";
+import { FSMonitor } from "./fsmonitor.js";
 
-// Watch specific patterns
-const watcher = chokidar.watch(
-    [
-        "*.js", // All JavaScript files
-        "*.ts", // All TypeScript files
-        "src/**/*.{js,ts}", // All JS/TS files in src directory and subdirectories
-    ],
-    {
-        ignored: /hello.js/,
-        persistent: true,
-    },
-);
+const path = "./src";
+const extensions = [".ts", ".js"];
+const awaitWriteFinish = true;
 
-watcher.on("all", (event, path) => {
-    console.log(event, path);
-});
+const monitor = new FSMonitor(path, extensions, awaitWriteFinish);
+monitor.watch();
