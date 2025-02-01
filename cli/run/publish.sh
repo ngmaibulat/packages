@@ -5,10 +5,8 @@
 # or use something else/don't bundle
 # npx esbuild src/run.ts --bundle --outdir=dist --format=esm --platform=node --target=es2020
 
-bun run build
 bun run commit
-
 npm version patch
-npm publish
 
-git push
+bun run build
+npm publish

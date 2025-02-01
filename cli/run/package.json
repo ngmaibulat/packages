@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/run",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Run a program with env vars specified",
   "main": "./dist/lib.js",
   "types": "./dist/lib.d.ts",
@@ -26,12 +26,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ngmaibulat/runWithEnv.git"
+    "url": "git+https://github.com/ngmaibulat/packages.git"
   },
   "bugs": {
-    "url": "https://github.com/ngmaibulat/runWithEnv/issues"
+    "url": "https://github.com/ngmaibulat/packages/issues"
   },
-  "homepage": "https://github.com/ngmaibulat/runWithEnv#readme",
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/cli/run#readme",
   "author": "Aibulat",
   "license": "MIT",
   "devDependencies": {
