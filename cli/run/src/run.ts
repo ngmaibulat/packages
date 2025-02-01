@@ -2,7 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { Command } from "commander";
-import { run } from "./lib.js";
+import { run, runMultiple, runForever } from "./lib.js";
 import packageJson from "$/package.json" with { type: "json" };
 
 async function main() {
@@ -19,6 +19,8 @@ async function main() {
             "before loading .env file, clean all environment variables except PATH, HOME, SHELL",
         )
         .option("-d, --debug", "output extra debugging")
+        .option("-r, --runs <count>", "run the command multiple times")
+        .option("-p, --pause <seconds>", "pause between runs")
         .argument("<exe>", "executable to run")
         .argument("[args...]", "arguments for the executable")
         .allowUnknownOption(true);
@@ -27,14 +29,35 @@ async function main() {
     const options = program.opts();
     const [exe, ...args] = program.args;
 
+    let forever = false;
+    let runs = 1;
+    let pause = 0;
+    let cmd = [];
+
+    if (options.runs) {
+        const tmp = parseInt(options.runs);
+        if (tmp === 0) {
+            forever = true;
+        }
+
+        if (tmp > 1) {
+            runs = tmp;
+        }
+    }
+
+    if (options.pause) {
+        const tmp = parseInt(options.pause);
+        if (tmp > 0) {
+            pause = tmp;
+        }
+    }
+
     if (options.debug) {
         console.log("Options:", options);
         console.log("Executable:", exe);
         console.log("Arguments:", args);
         console.log("\n\n");
     }
-
-    let cmd = null;
 
     if (options.envFile) {
         const exists = existsSync(options.envFile);
@@ -45,11 +68,25 @@ async function main() {
             process.exit(1);
         }
 
-        cmd = await run(exe, args, options.clean, options.envFile);
+        if (forever) {
+            await runForever(exe, args, options.clean, options.envFile, pause);
+        } else {
+            cmd = await runMultiple(
+                exe,
+                args,
+                options.clean,
+                options.envFile,
+                runs,
+                pause,
+            );
+        }
     } else {
-        cmd = await run(exe, args, options.clean);
+        if (forever) {
+            await runForever(exe, args, options.clean, options.envFile, pause);
+        } else {
+            cmd = await runMultiple(exe, args, options.clean, "", runs, pause);
+        }
     }
-
     // console.log(cmd);
 }
 

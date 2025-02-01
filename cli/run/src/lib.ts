@@ -29,3 +29,44 @@ export function cleanVars() {
         if (!keep.has(key)) delete process.env[key];
     });
 }
+
+async function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function runMultiple(
+    program: string,
+    args: string[],
+    clean: boolean = false,
+    envfile: string = "",
+    runs: number = 1,
+    pause: number = 0,
+) {
+    const result = [];
+    for (let i = 0; i < runs; i++) {
+        const cmd = await run(program, args, clean, envfile);
+        result.push(cmd);
+        console.log("\n\n");
+
+        if (pause) {
+            await sleep(pause * 1000);
+        }
+    }
+}
+
+export async function runForever(
+    program: string,
+    args: string[],
+    clean: boolean = false,
+    envfile: string = "",
+    pause: number = 0,
+) {
+    while (true) {
+        const cmd = await run(program, args, clean, envfile);
+        console.log("\n\n");
+
+        if (pause) {
+            await sleep(pause * 1000);
+        }
+    }
+}

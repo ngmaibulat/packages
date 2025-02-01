@@ -5,6 +5,49 @@ By default, it tries to load .env file from the current directory.
 Another env file can be specified with `-e` option.
 If another file specified - it must exist.
 
+### Install
+
+```bash
+npm install -g @aibulat/run
+bun install -g @aibulat/run
+run --version
+```
+
+### Help
+
+```bash
+run --help
+
+Usage: run [options] <exe> [args...]
+
+Run programs with environment variables preloaded from file
+
+Arguments:
+  exe                    executable to run
+  args                   arguments for the executable
+
+Options:
+  -V, --version          output the version number
+  -e, --env-file <path>  path to .env file
+  -c, --clean            before loading .env file, clean all environment variables except PATH, HOME, SHELL
+  -d, --debug            output extra debugging
+  -r, --runs <count>     run the command multiple times
+  -p, --pause <seconds>  pause between runs
+  -h, --help             display help for command
+```
+
+### Run command repeatedly/infitely, with a 1 second pause between runs
+
+```bash
+run -r 0 -p 1 ls -la
+```
+
+### Run command 5 times, with a 2 seconds pause between runs
+
+```bash
+run -r 5 -p 2 ls -la
+```
+
 ### Use as CLI with npx
 
 1. `npx @aibulat/run --version`
