@@ -1,8 +1,8 @@
 export async function run(
     program: string,
     args: string[],
-    clean: boolean = false,
-    envfile: string = "",
+    clean = false,
+    envfile = ""
 ) {
     const child_process = await import("node:child_process");
     const spawn = child_process.spawn;
@@ -24,10 +24,15 @@ export async function run(
 
 export function cleanVars() {
     const keep = new Set(["PATH", "HOME", "SHELL"]);
+    const envKeys = Object.keys(process.env);
 
-    Object.keys(process.env).forEach((key) => {
-        if (!keep.has(key)) delete process.env[key];
-    });
+    for (const key of envKeys) {
+        const allowed = keep.has(key);
+
+        if (!allowed) {
+            delete process.env[key];
+        }
+    }
 }
 
 async function sleep(ms: number) {
@@ -37,10 +42,10 @@ async function sleep(ms: number) {
 export async function runMultiple(
     program: string,
     args: string[],
-    clean: boolean = false,
-    envfile: string = "",
-    runs: number = 1,
-    pause: number = 0,
+    clean = false,
+    envfile = "",
+    runs = 1,
+    pause = 0
 ) {
     const result = [];
 
@@ -60,9 +65,9 @@ export async function runMultiple(
 export async function runForever(
     program: string,
     args: string[],
-    clean: boolean = false,
-    envfile: string = "",
-    pause: number = 0,
+    clean = false,
+    envfile = "",
+    pause = 0
 ) {
     while (true) {
         const cmd = await run(program, args, clean, envfile);

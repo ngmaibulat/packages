@@ -1,19 +1,20 @@
 import chokidar from "chokidar";
-import fs from "fs";
+// import fs from "node:fs";
+import type { Stats } from "node:fs";
 
 export type FSMonitorEvent = "add" | "change" | "unlink";
 
-export type FSMonitorHandler = (path: string, stats: fs.Stats) => void;
+export type FSMonitorHandler = (path: string, stats: Stats | undefined) => void;
 export type FSMonitorAllHandler = (event: string, path: string) => void;
-export type FSMonitorErrorHandler = (error: any) => void;
+export type FSMonitorErrorHandler = (error: unknown) => void;
 
 export class FSMonitor {
     private readonly path: string;
     private readonly extensions: string[];
     private readonly awaitWriteFinish: boolean;
-    private handlers: { [event: string]: Function } = {};
-    private errorHandler: Function | null = null;
-    private allHandler: Function | null = null;
+    private handlers: { [event: string]: FSMonitorHandler } = {};
+    private errorHandler: FSMonitorErrorHandler | null = null;
+    private allHandler: FSMonitorAllHandler | null = null;
 
     static events = ["add", "change", "unlink"];
 
@@ -23,7 +24,7 @@ export class FSMonitor {
         this.awaitWriteFinish = awaitWriteFinish;
     }
 
-    setErrorHandler(handler: Function) {
+    setErrorHandler(handler: FSMonitorErrorHandler) {
         this.errorHandler = handler;
     }
 
@@ -91,7 +92,7 @@ export class FSMonitor {
         });
     }
 
-    private isIgnored(path: string, stats: fs.Stats | undefined): boolean {
+    private isIgnored(path: string, stats: Stats | undefined): boolean {
         if (!stats) {
             return false;
         }

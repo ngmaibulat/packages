@@ -9,7 +9,18 @@ import packageJson from "$/package.json" with { type: "json" };
 
 type Events = "create" | "change" | "delete" | "all";
 
-function getExtensions(ext: string) {
+interface ProgramOptions {
+    envFile?: string;
+    clean?: boolean;
+    debug?: boolean;
+    runs?: string;
+    pause?: string;
+    monpath?: string;
+    monext?: string;
+    monevents?: string;
+}
+
+function getExtensions(ext: string | undefined) {
     if (ext) {
         return ext.split(",");
     }
@@ -17,7 +28,7 @@ function getExtensions(ext: string) {
     return [];
 }
 
-function getEvents(events: string): Events[] {
+function getEvents(events: string  | undefined): Events[] {
     if (!events) {
         return ["all"];
     }
@@ -37,14 +48,14 @@ function getEvents(events: string): Events[] {
     return list as Events[];
 }
 
-async function runStandard(exe: string, args: string[], options: any) {
+async function runStandard(exe: string, args: string[], options: ProgramOptions) {
     let forever = false;
     let runs = 1;
     let pause = 0;
     let cmd = [];
 
     if (options.runs) {
-        const tmp = parseInt(options.runs);
+        const tmp = Number.parseInt(options.runs);
         if (tmp === 0) {
             forever = true;
         }
@@ -55,7 +66,7 @@ async function runStandard(exe: string, args: string[], options: any) {
     }
 
     if (options.pause) {
-        const tmp = parseInt(options.pause);
+        const tmp = Number.parseInt(options.pause);
         if (tmp > 0) {
             pause = tmp;
         }
@@ -90,7 +101,7 @@ async function runStandard(exe: string, args: string[], options: any) {
     // console.log(cmd);
 }
 
-async function runMonitoring(exe: string, args: string[], options: any) {
+async function runMonitoring(exe: string, args: string[], options: ProgramOptions) {
     if (options.debug) {
         console.log("Options:", options);
         console.log("Executable:", exe);
@@ -117,7 +128,7 @@ async function runMonitoring(exe: string, args: string[], options: any) {
         envFile = options.envFile;
     }
 
-    const path = options.monpath;
+    const path = options.monpath || ".";
     const extensions = getExtensions(options.monext);
     const events = getEvents(options.monevents);
     const awaitWriteFinish = true;
@@ -183,7 +194,8 @@ async function main() {
         .allowUnknownOption(true);
 
     program.parse(process.argv);
-    const options = program.opts();
+    // const options = program.opts();
+    const options = program.opts<ProgramOptions>();
     const [exe, ...args] = program.args;
 
     if (options.monpath) {

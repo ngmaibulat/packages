@@ -5,6 +5,13 @@ By default, it tries to load .env file from the current directory.
 Another env file can be specified with `-e` option.
 If another file specified - it must exist.
 
+You can run command multiple times by specifying `-r` option. For example,
+`-r 4`. You can repeat running command infitely by specifying `-r 0`.
+Pauses between command runs can be specified via `-p seconds`. Like: `run -r 4 -p 1`
+
+Another way to run commands, is filesystem events based. You can specify monitored path, file extensions
+and event types.
+
 ### Install
 
 ```bash
@@ -31,7 +38,7 @@ Options:
   -d, --debug            output extra debugging
   -r, --runs <count>     run the command multiple times
   -p, --pause <seconds>  pause between runs
-  --monpath <path>       monitor path, run on fs change. --runs and --pause are ignored
+  --monpath <path>       monitor path, run only on fs event. --runs and --pause are ignored
   --monext <ext>         file extensions to monitor
   --monevents <events>   event list: create,change,delete,all
   -h, --help             display help for command
@@ -53,6 +60,8 @@ run -r 5 -p 2 ls -la
 
 ```bash
 run --monpath . --monext ts,js,css --monevents create lsd -l
+run --monpath . --monext ts,js,css --monevents all lsd -l
+run --monpath ./src ls -l
 ```
 
 ### Use as CLI with npx
