@@ -47,7 +47,7 @@ export async function runMultiple(
     for (let i = 0; i < runs; i++) {
         const cmd = await run(program, args, clean, envfile);
         result.push(cmd);
-        console.log("\n\n");
+        console.log("\n");
 
         if (pause) {
             await sleep(pause * 1000);
@@ -66,7 +66,7 @@ export async function runForever(
 ) {
     while (true) {
         const cmd = await run(program, args, clean, envfile);
-        console.log("\n\n");
+        console.log("\n");
 
         if (pause) {
             await sleep(pause * 1000);

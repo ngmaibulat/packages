@@ -16,8 +16,6 @@ run --version
 ### Help
 
 ```bash
-run --help
-
 Usage: run [options] <exe> [args...]
 
 Run programs with environment variables preloaded from file
@@ -33,6 +31,9 @@ Options:
   -d, --debug            output extra debugging
   -r, --runs <count>     run the command multiple times
   -p, --pause <seconds>  pause between runs
+  --monpath <path>       monitor path, run on fs change. --runs and --pause are ignored
+  --monext <ext>         file extensions to monitor
+  --monevents <events>   event list: create,change,delete,all
   -h, --help             display help for command
 ```
 
@@ -46,6 +47,12 @@ run -r 0 -p 1 ls -la
 
 ```bash
 run -r 5 -p 2 ls -la
+```
+
+### File Monitoring
+
+```bash
+run --monpath . --monext ts,js,css --monevents create lsd -l
 ```
 
 ### Use as CLI with npx
