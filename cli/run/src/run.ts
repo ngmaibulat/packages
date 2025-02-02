@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import type { Stats } from "node:fs";
+
 import { existsSync } from "node:fs";
 import { Command } from "commander";
 import { FSMonitor } from "./fsmonitor.js";
@@ -46,6 +48,23 @@ function getEvents(events: string  | undefined): Events[] {
     }
 
     return list as Events[];
+}
+
+function replaceArgs(args: string[], path: string, stats: Stats | undefined) {
+    const newargs = [];
+
+    for (const arg of args) {
+        let narg = arg.replaceAll("%path", path);
+
+        if (stats) {
+            narg = narg.replaceAll("%size", stats.size.toString())
+            narg = narg.replaceAll("%mtime", stats.mtime.toString())
+        }
+
+        newargs.push(narg);
+    }
+
+    return newargs;
 }
 
 async function runStandard(exe: string, args: string[], options: ProgramOptions) {
@@ -137,29 +156,35 @@ async function runMonitoring(exe: string, args: string[], options: ProgramOption
 
     if (events.includes("all")) {
         monitor.setAllHandler(async (event, path) => {
-            const msg = `\nevent: ${event} on path: ${path}, running: ${exe} with args: ${args}`;
+            const nargs = replaceArgs(args, path, undefined);
+
+            const msg = `\nevent: ${event} on path: ${path}, running: ${exe} with args: ${nargs}`;
             console.log(msg);
-            await run(exe, args, options.clean, envFile);
+
+            await run(exe, nargs, options.clean, envFile);
         });
     } else {
         if (events.includes("create")) {
             monitor.on("add", async (path, stats) => {
                 console.log(`Create Event: ${path}`);
-                await run(exe, args, options.clean, envFile);
+                const nargs = replaceArgs(args, path, stats);
+                await run(exe, nargs, options.clean, envFile);
             });
         }
 
         if (events.includes("change")) {
             monitor.on("change", async (path, stats) => {
                 console.log(`Change Event: ${path}`);
-                await run(exe, args, options.clean, envFile);
+                const nargs = replaceArgs(args, path, stats);
+                await run(exe, nargs, options.clean, envFile);
             });
         }
 
         if (events.includes("delete")) {
             monitor.on("unlink", async (path, stats) => {
                 console.log(`Delete Event: ${path}`);
-                await run(exe, args, options.clean, envFile);
+                const nargs = replaceArgs(args, path, stats);
+                await run(exe, nargs, options.clean, envFile);
             });
         }
     }
@@ -194,7 +219,6 @@ async function main() {
         .allowUnknownOption(true);
 
     program.parse(process.argv);
-    // const options = program.opts();
     const options = program.opts<ProgramOptions>();
     const [exe, ...args] = program.args;
 

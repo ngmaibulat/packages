@@ -12,6 +12,9 @@ Pauses between command runs can be specified via `-p seconds`. Like: `run -r 4 -
 Another way to run commands, is filesystem events based. You can specify monitored path, file extensions
 and event types.
 
+When running by fs events, you can use `%path` variable among command args. It would be replaced with actual path.
+Like: `run --monpath . --monevents change echo %path`
+
 ### Install
 
 ```bash
