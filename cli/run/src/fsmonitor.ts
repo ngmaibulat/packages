@@ -1,15 +1,47 @@
 import chokidar from "chokidar";
 import fs from "fs";
 
+export type FSMonitorEvent = "add" | "change" | "unlink";
+
+export type FSMonitorHandler = (path: string, stats: fs.Stats) => void;
+export type FSMonitorAllHandler = (event: string, path: string) => void;
+export type FSMonitorErrorHandler = (error: any) => void;
+
 export class FSMonitor {
     private readonly path: string;
     private readonly extensions: string[];
     private readonly awaitWriteFinish: boolean;
+    private handlers: { [event: string]: Function } = {};
+    private errorHandler: Function | null = null;
+    private allHandler: Function | null = null;
+
+    static events = ["add", "change", "unlink"];
 
     constructor(path: string, extensions: string[], awaitWriteFinish: boolean) {
         this.path = path;
         this.extensions = extensions;
         this.awaitWriteFinish = awaitWriteFinish;
+    }
+
+    setErrorHandler(handler: Function) {
+        this.errorHandler = handler;
+    }
+
+    setAllHandler(handler: FSMonitorAllHandler) {
+        this.allHandler = handler;
+    }
+
+    on(event: FSMonitorEvent, handler: FSMonitorHandler) {
+        const validEvent = FSMonitor.events.includes(event);
+        if (!validEvent) {
+            throw new Error(`Invalid event: ${event}`);
+        }
+
+        this.handlers[event] = handler;
+    }
+
+    off(event: FSMonitorEvent) {
+        delete this.handlers[event];
     }
 
     public watch() {
@@ -22,16 +54,39 @@ export class FSMonitor {
             depth: 100,
         });
 
+        watcher.on("error", (error) => {
+            if (this.errorHandler) {
+                this.errorHandler(error);
+            }
+        });
+
         watcher.on("all", (event, path) => {
-            console.log(event, path);
+            if (this.allHandler) {
+                this.allHandler(event, path);
+            }
         });
 
         watcher.on("change", (path, stats) => {
-            console.log(`File changed: ${path}`);
+            const event = "change";
 
-            if (stats) {
-                console.log("File size:", stats.size);
-                console.log("Last modified:", stats.mtime);
+            if (this.handlers[event]) {
+                this.handlers[event](path, stats);
+            }
+        });
+
+        watcher.on("add", (path, stats) => {
+            const event = "add";
+
+            if (this.handlers[event]) {
+                this.handlers[event](path, stats);
+            }
+        });
+
+        watcher.on("unlink", (path, stats) => {
+            const event = "unlink";
+
+            if (this.handlers[event]) {
+                this.handlers[event](path, stats);
             }
         });
     }
