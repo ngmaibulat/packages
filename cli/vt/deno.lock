@@ -1,0 +1,69 @@
+{
+  "version": "4",
+  "specifiers": {
+    "jsr:@denosaurs/plug@1.0.5": "1.0.5",
+    "jsr:@sigma/pty-ffi@*": "0.26.4",
+    "jsr:@sigma/pty-ffi@~0.26.4": "0.26.4",
+    "jsr:@std/assert@0.214": "0.214.0",
+    "jsr:@std/assert@1": "1.0.11",
+    "jsr:@std/encoding@0.214": "0.214.0",
+    "jsr:@std/fmt@0.214": "0.214.0",
+    "jsr:@std/fs@0.214": "0.214.0",
+    "jsr:@std/internal@^1.0.5": "1.0.5",
+    "jsr:@std/path@0.214": "0.214.0"
+  },
+  "jsr": {
+    "@denosaurs/plug@1.0.5": {
+      "integrity": "04cd988da558adc226202d88c3a434d5fcc08146eaf4baf0cea0c2284b16d2bf",
+      "dependencies": [
+        "jsr:@std/encoding",
+        "jsr:@std/fmt",
+        "jsr:@std/fs",
+        "jsr:@std/path"
+      ]
+    },
+    "@sigma/pty-ffi@0.26.4": {
+      "integrity": "94c7e81bed356a166591a9b4aa79b5e39b430270b97a5647575d84d39094c6f9",
+      "dependencies": [
+        "jsr:@denosaurs/plug"
+      ]
+    },
+    "@std/assert@0.214.0": {
+      "integrity": "55d398de76a9828fd3b1aa653f4dba3eee4c6985d90c514865d2be9bd082b140"
+    },
+    "@std/assert@1.0.11": {
+      "integrity": "2461ef3c368fe88bc60e186e7744a93112f16fd110022e113a0849e94d1c83c1",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/encoding@0.214.0": {
+      "integrity": "30a8713e1db22986c7e780555ffd2fefd1d4f9374d734bb41f5970f6c3352af5"
+    },
+    "@std/fmt@0.214.0": {
+      "integrity": "40382cff88a0783b347b4d69b94cf931ab8e549a733916718cb866c08efac4d4"
+    },
+    "@std/fs@0.214.0": {
+      "integrity": "bc880fea0be120cb1550b1ed7faf92fe071003d83f2456a1e129b39193d85bea",
+      "dependencies": [
+        "jsr:@std/assert@0.214",
+        "jsr:@std/path"
+      ]
+    },
+    "@std/internal@1.0.5": {
+      "integrity": "54a546004f769c1ac9e025abd15a76b6671ddc9687e2313b67376125650dc7ba"
+    },
+    "@std/path@0.214.0": {
+      "integrity": "d5577c0b8d66f7e8e3586d864ebdf178bb326145a3611da5a51c961740300285",
+      "dependencies": [
+        "jsr:@std/assert@0.214"
+      ]
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@sigma/pty-ffi@~0.26.4",
+      "jsr:@std/assert@1"
+    ]
+  }
+}

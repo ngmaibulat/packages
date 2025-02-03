@@ -4,8 +4,8 @@ import type { Stats } from "node:fs";
 
 import { existsSync } from "node:fs";
 import { Command } from "commander";
-import { FSMonitor } from "./fsmonitor.js";
-import { run, runMultiple, runForever } from "./lib.js";
+import { FSMonitor } from "./fsmonitor";
+import { run, runMultiple, runForever } from "./lib";
 
 import packageJson from "$/package.json" with { type: "json" };
 

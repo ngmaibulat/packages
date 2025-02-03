@@ -7,7 +7,7 @@ If another file specified - it must exist.
 
 You can run command multiple times by specifying `-r` option. For example,
 `-r 4`. You can repeat running command infitely by specifying `-r 0`.
-Pauses between command runs can be specified via `-p seconds`. Like: `run -r 4 -p 1`
+Pauses between command runs can be specified via `-p seconds`. Like: `run -r 4 -p 1 ls`
 
 Another way to run commands, is filesystem events based. You can specify monitored path, file extensions
 and event types.

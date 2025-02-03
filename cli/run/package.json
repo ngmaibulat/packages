@@ -11,7 +11,7 @@
   "scripts": {
     "test": "node --test",
     "build": "tsc; tsup",
-    "build:watch": "tsc -w",
+    "dev": "tsup --watch",
     "commit": "tsc; tsup; git add . ; git commit -a -m minor",
     "alga": "bash publish.sh"
   },
@@ -43,6 +43,7 @@
   "dependencies": {
     "chokidar": "^4.0.3",
     "commander": "^13.1.0",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "node-pty": "^1.0.0"
   }
 }
