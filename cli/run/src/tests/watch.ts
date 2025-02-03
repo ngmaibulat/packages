@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { FSMonitor } from "./fsmonitor";
+import { FSMonitor } from "../fsmonitor";
 
 //note: check tmp.ts
 

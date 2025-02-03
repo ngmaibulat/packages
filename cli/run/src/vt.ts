@@ -14,7 +14,7 @@ export class VT {
         name = "xterm-color",
         cols = 80,
         rows = 40,
-        cwd = process.env.HOME,
+        cwd = process.cwd(),
         env = process.env
     ) {
         this.name = name;
