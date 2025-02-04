@@ -24,9 +24,14 @@ export async function getLogDir() {
     return logDir;
 }
 
+export function getLogFileName(cmd: string) {
+    const filename = `run-${formatDateTime()}-${cmd}.log`;
+    return filename;
+}
+
 export async function getLogFile(cmd: string) {
     const logDir = await getLogDir();
-    const filename = `run-${formatDateTime()}-${cmd}.log`;
+    const filename = getLogFileName(cmd);
     const logPath = `${logDir}/${filename}`;
 
     return logPath;

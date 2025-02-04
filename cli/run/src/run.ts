@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/bin/env -S node --no-warnings
 
 import type { Stats } from "node:fs";
 
@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { Command } from "commander";
 import { FSMonitor } from "./fsmonitor";
 import { run, runMultiple, runForever } from "./lib";
+import { getLogDir } from "./logging"
 
 import packageJson from "$/package.json" with { type: "json" };
 
@@ -15,6 +16,7 @@ interface ProgramOptions {
     envFile?: string;
     clean?: boolean;
     debug?: boolean;
+    logs?: boolean;
     runs?: string;
     pause?: string;
     monpath?: string;
@@ -200,12 +202,13 @@ async function main() {
         .name("run")
         .description(desc)
         .version(packageJson.version)
+        .option("-l, --logs", "show log dir and exit")
+        .option("-d, --debug", "output extra debugging")
         .option("-e, --env-file <path>", "path to .env file")
         .option(
             "-c, --clean",
             "before loading .env file, clean all environment variables except PATH, HOME, SHELL",
         )
-        .option("-d, --debug", "output extra debugging")
         .option("-r, --runs <count>", "run the command multiple times")
         .option("-p, --pause <seconds>", "pause between runs")
         .option(
@@ -214,13 +217,25 @@ async function main() {
         )
         .option("--monext <ext>", "file extensions to monitor")
         .option("--monevents <events>", "event list: create,change,delete,all")
-        .argument("<exe>", "executable to run")
+        .argument("[exe]", "executable to run")
         .argument("[args...]", "arguments for the executable")
         .allowUnknownOption(true);
 
     program.parse(process.argv);
     const options = program.opts<ProgramOptions>();
     const [exe, ...args] = program.args;
+
+    if (options.logs) {
+        const logDir = await getLogDir();
+        console.log(logDir);
+        process.exit(0);
+    }
+    else {
+        if (!exe) {
+            console.error("specify command to run")
+            process.exit(1);
+        }
+    }
 
     if (options.monpath) {
         runMonitoring(exe, args, options);

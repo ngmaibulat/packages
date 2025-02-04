@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/bin/env node
 
 import { FSMonitor } from "../fsmonitor";
 

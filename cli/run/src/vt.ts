@@ -53,7 +53,7 @@ export class VT {
     }
 
     output() {
-        const out = this.buffer.join();
+        const out = this.buffer.join("");
         return out;
     }
 

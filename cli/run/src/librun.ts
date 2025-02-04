@@ -1,11 +1,15 @@
 import fs from "node:fs/promises";
 
 import { VT } from "./vt";
-import { getLogFile } from "./logging";
+import { getLogDir, getLogFile, getLogFileName } from "./logging";
+import { DBLog } from "./dblog";
 
 export async function runVT(cmd: string, args: string[]) {
     //get Log Path
-    const logPath = await getLogFile(cmd);
+    const logDir = await getLogDir();
+    const db = new DBLog(logDir);
+    const logFile = getLogFileName(cmd);
+    const logPath = `${logDir}/${logFile}`;
 
     //create vt
     const vt = new VT();
@@ -21,6 +25,8 @@ export async function runVT(cmd: string, args: string[]) {
 
     //stdout output
     console.log(out);
+
+    db.insertLog(cmd, args, logFile);
 }
 
 export async function runSpawn(cmd: string, args: string[]) {

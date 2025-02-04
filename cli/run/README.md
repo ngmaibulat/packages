@@ -1,4 +1,29 @@
-### @aibulat/run
+### Support
+
+- NodeJS v22.5.0 and above
+- Linux
+
+### Deno/Bun Status
+
+- Currently unsupported
+- As we can't use node-pty there
+
+### Run Process
+
+- once
+- multiple times
+- infinitely
+- on fs changes
+- with specified pause between runs
+- with specified env file
+- with output logging
+
+### Logs Location
+
+- `$HOME/.local/state/ngm/logs`
+- You can use `--logs` option to print actual logs directory
+
+### Overview
 
 Run a Process with specified ENV vars loaded.
 By default, it tries to load .env file from the current directory.
@@ -25,7 +50,7 @@ run --version
 ### Help
 
 ```bash
-Usage: run [options] <exe> [args...]
+Usage: run [options] [exe] [args...]
 
 Run programs with environment variables preloaded from file
 
@@ -35,12 +60,13 @@ Arguments:
 
 Options:
   -V, --version          output the version number
+  -l, --logs             show log dir and exit
+  -d, --debug            output extra debugging
   -e, --env-file <path>  path to .env file
   -c, --clean            before loading .env file, clean all environment variables except PATH, HOME, SHELL
-  -d, --debug            output extra debugging
   -r, --runs <count>     run the command multiple times
   -p, --pause <seconds>  pause between runs
-  --monpath <path>       monitor path, run only on fs event. --runs and --pause are ignored
+  --monpath <path>       monitor path, run on fs change. --runs and --pause are ignored
   --monext <ext>         file extensions to monitor
   --monevents <events>   event list: create,change,delete,all
   -h, --help             display help for command
@@ -98,5 +124,10 @@ const cmd = run(program, args);
 ### Function Signature
 
 ```typescript
-run(program: string, args: string[])
+run(cmd: string, args: string[], clean: boolean, envfile: string)
 ```
+
+- cmd: program to run
+- args: program arguments
+- clean: flag to cleanup all ENV, except PATH, HOME, SHELL - before loading envfile
+- envfile: env file to load. If not specified, we try to load .env in current directory
