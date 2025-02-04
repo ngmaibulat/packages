@@ -19,6 +19,7 @@ Like: `run --monpath . --monevents change echo %path`
 
 ```bash
 npm install -g @aibulat/run
+bun install -g @aibulat/run
 run --version
 ```
 
@@ -73,6 +74,17 @@ run --monpath ./src ls -l
 1. `npx @aibulat/run <cmd>`
 1. `npx @aibulat/run -e some-env-file <cmd>`
 
+### Use with Bun
+
+1. `curl -fsSL https://bun.sh/install | bash`
+1. `bun upgrade`
+1. `bun --version`
+1. `bun install -g @aibulat/run`
+1. `run --version`
+1. `run --help`
+1. `run <cmd>`
+1. `run -e some-env-file <cmd>`
+
 ### CLI samples:
 
 ```sh
@@ -98,5 +110,26 @@ const cmd = run(program, args);
 ### Function Signature
 
 ```typescript
-run(program: string, args: string[])
+run(program: string, args: string[]): Promise<ChildProcess>
+```
+
+### CJS is not supported
+
+`tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "nodenext"
+  }
+}
+```
+
+`package.json`:
+
+```json
+{
+  "type": "module"
+}
 ```

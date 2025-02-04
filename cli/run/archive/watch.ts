@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import chokidar from "chokidar";
-import fs from "fs";
+import fs from "node:fs";
 
 const path = "./src";
 const extensions = [".ts", ".js"];

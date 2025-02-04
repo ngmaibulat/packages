@@ -1,12 +1,11 @@
+import { runSpawn, runVT } from "./librun";
+
 export async function run(
-    program: string,
+    cmd: string,
     args: string[],
     clean = false,
     envfile = ""
 ) {
-    const child_process = await import("node:child_process");
-    const spawn = child_process.spawn;
-
     if (clean) {
         cleanVars();
     }
@@ -18,8 +17,7 @@ export async function run(
         dotenv.config();
     }
 
-    const cmd = spawn(program, args, { stdio: "inherit" });
-    return cmd;
+    return await runVT(cmd, args);
 }
 
 export function cleanVars() {

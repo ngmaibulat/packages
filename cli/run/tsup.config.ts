@@ -1,7 +1,12 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-    entry: ["src/run.ts", "src/lib.ts", "src/tests/vt-use.ts"],
+    entry: [
+        "src/run.ts",
+        "src/lib.ts",
+        "src/tests/runvt.ts",
+        "src/tests/watch.ts",
+    ],
     format: ["esm"],
     outDir: "dist",
     dts: false,
