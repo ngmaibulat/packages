@@ -18,11 +18,6 @@
 - with specified env file
 - with output logging
 
-### Logs Location
-
-- `$HOME/.local/state/ngm/logs`
-- You can use `--logs` option to print actual logs directory
-
 ### Overview
 
 Run a Process with specified ENV vars loaded.
@@ -45,10 +40,25 @@ Like: `run --monpath . --monevents change echo %path`
 Command that you run might have options contradicting with `run` command itself.
 In this case, you `--` separator between options for `run` and the command.
 
+### Logs Location
+
+- `$HOME/.local/state/ngm/logs`
+- You can use `--logs` option to print actual logs directory
+
 Example:
 
 ```bash
 run -r 2 -- lsd -l
+```
+
+### View Logs
+
+The package includes `logview` utility to view logs
+
+Example:
+
+```bash
+logview
 ```
 
 ### Install

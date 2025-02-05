@@ -1,4 +1,7 @@
+import path from "node:path";
 import { runSpawn, runVT } from "./librun";
+import { getLogDir, getLogFile, getLogFileName } from "./logging";
+import { DBLog } from "./dblog";
 
 export async function run(
     cmd: string,
@@ -10,14 +13,25 @@ export async function run(
         cleanVars();
     }
 
+    let envFullPath = "";
+
     const dotenv = await import("dotenv");
     if (envfile) {
         dotenv.config({ path: envfile });
+        envFullPath = path.resolve(envfile);
     } else {
         dotenv.config();
     }
 
-    return await runVT(cmd, args);
+    const logDir = await getLogDir();
+    const db = new DBLog(logDir);
+    const logFile = getLogFileName(cmd);
+    const logPath = `${logDir}/${logFile}`;
+
+    const rc = await runVT(cmd, args, logPath);
+    const cwd = process.cwd();
+
+    db.insertLog(cwd, cmd, args, logFile, envFullPath, rc);
 }
 
 export function cleanVars() {

@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
 
-function pad(num: number) {
+export function pad(num: number) {
     return num.toString().padStart(2, "0");
 }
 

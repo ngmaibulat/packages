@@ -1,5 +1,10 @@
 import * as pty from "node-pty";
 
+type exitData = {
+    exitCode: number;
+    signal?: number | undefined;
+};
+
 export class VT {
     name: string;
     cols: number;
@@ -9,6 +14,8 @@ export class VT {
     ptyProcess: pty.IPty | null = null;
     buffer: string[] = [];
     running = false;
+    exitCode = 0;
+    exitSignal = 0;
 
     constructor(
         name = "xterm-color",
@@ -63,7 +70,9 @@ export class VT {
                     this.buffer.push(data);
                 });
 
-                this.ptyProcess.onExit(async () => {
+                this.ptyProcess.onExit((e: exitData) => {
+                    this.exitCode = e.exitCode;
+                    this.exitSignal = e.signal || 0;
                     this.running = false;
                     resolve();
                 });

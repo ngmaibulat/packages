@@ -1,11 +1,12 @@
 {
   "name": "@aibulat/run",
-  "version": "0.2.11",
+  "version": "0.2.13",
   "description": "Run a program with env vars specified",
   "main": "./dist/lib.js",
   "types": "./dist/lib.d.ts",
   "bin": {
-    "run": "dist/run.js"
+    "run": "dist/run.js",
+    "logview": "dist/logview.js"
   },
   "type": "module",
   "scripts": {
@@ -42,6 +43,7 @@
   },
   "dependencies": {
     "chokidar": "^4.0.3",
+    "cli-table3": "^0.6.5",
     "commander": "^13.1.0",
     "dotenv": "^16.4.7",
     "node-pty": "^1.0.0"

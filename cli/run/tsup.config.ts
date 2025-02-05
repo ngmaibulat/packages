@@ -4,11 +4,11 @@ import { exec } from "node:child_process";
 export default defineConfig({
     entry: [
         "src/run.ts",
+        "src/logview.ts",
         "src/lib.ts",
         "src/tests/runvt.ts",
         "src/tests/watch.ts",
         "src/tests/sql.ts",
-        "src/tests/bug-glow.ts",
     ],
     format: ["esm"],
     outDir: "dist",
@@ -21,6 +21,7 @@ export default defineConfig({
     onSuccess: async () => {
         exec("chmod +x dist/tests/*.js");
         exec("chmod +x dist/run.js");
+        exec("chmod +x dist/logview.js");
     },
 
     // esbuildOptions(options) {
