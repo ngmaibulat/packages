@@ -1,12 +1,13 @@
 {
   "name": "@aibulat/run",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "description": "Run a program with env vars specified",
   "main": "./dist/lib.js",
   "types": "./dist/lib.d.ts",
   "bin": {
     "run": "dist/run.js",
-    "logview": "dist/logview.js"
+    "logview": "dist/logview.js",
+    "output": "dist/output.js"
   },
   "type": "module",
   "scripts": {

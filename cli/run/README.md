@@ -3,6 +3,23 @@
 - NodeJS v22.5.0 and above
 - Linux
 
+### FNM
+
+Best way to manage your nodejs version is to use FNM:
+
+- https://github.com/Schniz/fnm
+
+```bash
+curl -fsSL https://fnm.vercel.app/install | bash
+
+fnm install 22
+fnm use 22
+fnm default 22
+fnm list
+
+node --version
+```
+
 ### Deno/Bun Status
 
 - Currently unsupported

@@ -55,4 +55,10 @@ export class DBLog {
         const rows = query.all().map((row) => structuredClone(row));
         return rows as LogRecord[];
     }
+
+    getOne(id: number) {
+        const query = this.db.prepare("SELECT * FROM runlog where id = ?");
+        const row = query.get(id);
+        return row as LogRecord;
+    }
 }

@@ -5,6 +5,7 @@ export default defineConfig({
     entry: [
         "src/run.ts",
         "src/logview.ts",
+        "src/output.ts",
         "src/lib.ts",
         "src/tests/runvt.ts",
         "src/tests/watch.ts",
@@ -20,8 +21,7 @@ export default defineConfig({
 
     onSuccess: async () => {
         exec("chmod +x dist/tests/*.js");
-        exec("chmod +x dist/run.js");
-        exec("chmod +x dist/logview.js");
+        exec("chmod +x dist/*.js");
     },
 
     // esbuildOptions(options) {
