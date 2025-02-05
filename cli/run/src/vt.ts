@@ -44,12 +44,17 @@ export class VT {
                     //and glow end up with waiting until timeout is reached
                     //so, we don't want to have that slowness
                     //and report cursor position ourselves
+                    //
+                    //Also, we don't want that DSR to be in output
+                    //So, we don't push it to the Output
+                    //So, we return after handling DSR
 
                     const dsr = "\x1B[6n";
 
                     if (data.includes(dsr)) {
                         const position = "\x1B[1;1R"; // report position 1;1
                         this.ptyProcess?.write(position);
+                        return;
                     }
 
                     this.buffer.push(data);
