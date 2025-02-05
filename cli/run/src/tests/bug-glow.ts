@@ -8,7 +8,10 @@ const cmd = "glow";
 const vt = new VT();
 
 //run process
-await vt.spawn(cmd, []);
+await vt.spawn(cmd, ["one.md"]);
+// await vt.spawn(cmd, ["-c", "1", "google.com"]);
 
 //get output
 const out = vt.output();
+
+console.log(out);

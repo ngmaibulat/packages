@@ -38,7 +38,20 @@ export class VT {
                 });
 
                 this.ptyProcess.onData((data) => {
-                    // appendFileSync("out.txt", data, "utf8");
+                    //fix for glow command
+                    //which requests current cursor position
+                    //and node-pty does not seem to be to handle this
+                    //and glow end up with waiting until timeout is reached
+                    //so, we don't want to have that slowness
+                    //and report cursor position ourselves
+
+                    const dsr = "\x1B[6n";
+
+                    if (data.includes(dsr)) {
+                        const position = "\x1B[1;1R"; // report position 1;1
+                        this.ptyProcess?.write(position);
+                    }
+
                     this.buffer.push(data);
                 });
 
