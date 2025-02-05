@@ -117,7 +117,6 @@ run env
 run ls -la
 run cat package.json
 run bash
-run htop
 run node somescript.js
 run -e file.env mysql -uroot -p
 ```

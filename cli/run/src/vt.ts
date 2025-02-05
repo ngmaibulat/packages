@@ -38,13 +38,16 @@ export class VT {
                 });
 
                 this.ptyProcess.onData((data) => {
+                    // DSR - Device Status Report
+                    // \x1B[6n -- DSR that requests cursor position
+
                     //fix for glow command
                     //which requests current cursor position
                     //and node-pty does not seem to be to handle this
                     //and glow end up with waiting until timeout is reached
                     //so, we don't want to have that slowness
                     //and report cursor position ourselves
-                    //
+
                     //Also, we don't want that DSR to be in output
                     //So, we don't push it to the Output
                     //So, we return after handling DSR
