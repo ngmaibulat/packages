@@ -8,6 +8,7 @@ export default defineConfig({
         "src/tests/runvt.ts",
         "src/tests/watch.ts",
         "src/tests/sql.ts",
+        "src/tests/bug-glow.ts",
     ],
     format: ["esm"],
     outDir: "dist",

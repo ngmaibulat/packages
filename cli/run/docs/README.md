@@ -40,6 +40,17 @@ and event types.
 When running by fs events, you can use `%path` variable among command args. It would be replaced with actual path.
 Like: `run --monpath . --monevents change echo %path`
 
+### Caution
+
+Command that you run might have options contradicting with `run` command itself.
+In this case, you `--` separator between options for `run` and the command.
+
+Example:
+
+```bash
+run -r 2 -- lsd -l
+```
+
 ### Install
 
 ```bash
