@@ -6,6 +6,7 @@ export default defineConfig({
         "src/run.ts",
         "src/logview.ts",
         "src/output.ts",
+        "src/shell.ts",
         "src/lib.ts",
         "src/tests/runvt.ts",
         "src/tests/watch.ts",
