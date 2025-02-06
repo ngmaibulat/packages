@@ -29,7 +29,7 @@ const rows = db.getLogs();
 // Create a new table with some settings
 const table = new Table({
     head: ["ID", "Time", "Workdir", "CMD", "Args", "Env", "RC", "Output"],
-    colWidths: [4, 22, 45, 20, 20, 20, 4, 40],
+    colWidths: [5, 22, 45, 20, 20, 20, 5, 40],
 });
 
 // Add rows to the table
