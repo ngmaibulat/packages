@@ -1,7 +1,7 @@
 #!/bin/env -S node --no-warnings
 
 import readline from "node:readline";
-import { runShell } from "./shell/lib";
+import { runShell } from "@/shell/lib";
 
 const rl = readline.createInterface({
     input: process.stdin,

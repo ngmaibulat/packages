@@ -3,11 +3,13 @@ import { exec } from "node:child_process";
 
 export default defineConfig({
     entry: [
-        "src/run.ts",
-        "src/logview.ts",
-        "src/output.ts",
-        "src/shell.ts",
         "src/lib.ts",
+
+        "src/cli/run.ts",
+        "src/cli/logview.ts",
+        "src/cli/output.ts",
+        "src/cli/shell.ts",
+
         "src/tests/runvt.ts",
         "src/tests/watch.ts",
         "src/tests/sql.ts",
@@ -22,7 +24,7 @@ export default defineConfig({
 
     onSuccess: async () => {
         exec("chmod +x dist/tests/*.js");
-        exec("chmod +x dist/*.js");
+        exec("chmod +x dist/cli/*.js");
     },
 
     // esbuildOptions(options) {

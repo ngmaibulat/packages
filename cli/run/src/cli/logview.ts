@@ -3,8 +3,8 @@
 import path from "node:path";
 
 import Table from "cli-table3";
-import { DBLog } from "./dblog";
-import { getLogDir, pad } from "./logging";
+import { DBLog } from "@/logging/dblog";
+import { getLogDir, pad } from "@/logging/logging";
 
 function formatDate(d: Date) {
     const year = d.getFullYear();

@@ -1,7 +1,8 @@
 import path from "node:path";
 import { runSpawn, runVT } from "./librun";
-import { getLogDir, getLogFile, getLogFileName } from "./logging";
-import { DBLog } from "./dblog";
+import { getLogDir, getLogFile, getLogFileName } from "./logging/logging";
+import { DBLog } from "@/logging/dblog";
+import { WebLog } from "@/logging/weblog";
 
 export async function run(
     cmd: string,
@@ -25,6 +26,7 @@ export async function run(
 
     const logDir = await getLogDir();
     const db = new DBLog(logDir);
+
     const logFile = getLogFileName(cmd);
     const logPath = `${logDir}/${logFile}`;
 
@@ -32,6 +34,12 @@ export async function run(
     const cwd = process.cwd();
 
     db.insertLog(cwd, cmd, args, logFile, envFullPath, rc);
+
+    if (process.env.NGM_LOG_URL) {
+        const url = process.env.NGM_LOG_URL;
+        const weblogger = new WebLog(url);
+        await weblogger.insertLog(cwd, cmd, args, logFile, envFullPath, rc);
+    }
 }
 
 export function cleanVars() {

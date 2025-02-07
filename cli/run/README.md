@@ -3,6 +3,19 @@
 - NodeJS v22.5.0 and above
 - Linux
 
+### Prerequisites
+
+The package has node-pty as a dependency. That is nodejs module written in C++.
+When installed via npm it is actually compiled. So, we need all required tools for that.
+
+- gcc
+- g++
+- make
+- python
+
+Python is used by node-gyp tool. Make sure to those those dependencies on your system.
+You can just use your system package manager to install those.
+
 ### FNM
 
 Best way to manage your nodejs version is to use FNM:

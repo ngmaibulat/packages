@@ -1,7 +1,7 @@
 #!/bin/env -S node --no-warnings
 
-import { getLogDir } from "../logging";
-import { DBLog } from "../dblog";
+import { getLogDir } from "@/logging/logging";
+import { DBLog } from "@/logging/dblog";
 
 const dbdir = await getLogDir();
 const db = new DBLog(dbdir);

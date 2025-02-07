@@ -1,8 +1,8 @@
 #!/bin/env -S node --no-warnings
 
 import { existsSync, readFileSync } from "node:fs";
-import { DBLog } from "./dblog";
-import { getLogDir, pad } from "./logging";
+import { DBLog } from "@/logging/dblog";
+import { getLogDir, pad } from "@/logging/logging";
 
 const argCount = process.argv.length;
 
