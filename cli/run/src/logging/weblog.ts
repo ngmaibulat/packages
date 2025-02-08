@@ -1,9 +1,15 @@
+import os from "node:os";
 import type { LogRecord } from "@/types";
 
 export class WebLog {
     private url;
+    private userid;
+    private username;
 
     constructor(url: string) {
+        const userinfo = os.userInfo();
+        this.userid = userinfo.uid;
+        this.username = userinfo.username;
         this.url = url;
     }
 
@@ -11,9 +17,9 @@ export class WebLog {
         cwd: string,
         cmd: string,
         args: string[],
-        output: string,
-        envfile: string,
-        rc: number
+        env: string,
+        rc: number,
+        uuid: string
     ) {
         const argsJson = JSON.stringify(args);
 
@@ -21,9 +27,11 @@ export class WebLog {
             cwd,
             cmd,
             args: argsJson,
-            env: envfile,
+            env,
             rc,
-            output,
+            uuid,
+            userid: this.userid,
+            username: this.username,
         };
 
         const fetchOptions = {
@@ -34,9 +42,32 @@ export class WebLog {
             body: JSON.stringify(body),
         };
 
-        const res = await fetch(this.url, fetchOptions);
+        const url = `${this.url}/api/log`;
 
-        console.log(res);
+        try {
+            await fetch(url, fetchOptions);
+        } catch (err) {
+            console.error("HTTP Error on URL:", url);
+        }
+    }
+
+    async insertOutput(uuid: string, output: string) {
+        const fetchOptions = {
+            method: "POST",
+            headers: {
+                "Content-Type": "text/plain",
+                uuid: uuid,
+            },
+            body: output,
+        };
+
+        const url = `${this.url}/api/output`;
+
+        try {
+            await fetch(url, fetchOptions);
+        } catch (err) {
+            console.error("HTTP Error on URL:", url);
+        }
     }
 
     getLogs() {

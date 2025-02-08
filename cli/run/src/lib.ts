@@ -24,21 +24,22 @@ export async function run(
         dotenv.config();
     }
 
+    const uuid = crypto.randomUUID();
+
     const logDir = await getLogDir();
     const db = new DBLog(logDir);
 
     const logFile = getLogFileName(cmd);
     const logPath = `${logDir}/${logFile}`;
 
-    const rc = await runVT(cmd, args, logPath);
+    const rc = await runVT(cmd, args, logPath, uuid);
     const cwd = process.cwd();
 
     db.insertLog(cwd, cmd, args, logFile, envFullPath, rc);
 
     if (process.env.NGM_LOG_URL) {
-        const url = process.env.NGM_LOG_URL;
-        const weblogger = new WebLog(url);
-        await weblogger.insertLog(cwd, cmd, args, logFile, envFullPath, rc);
+        const weblogger = new WebLog(process.env.NGM_LOG_URL);
+        await weblogger.insertLog(cwd, cmd, args, envFullPath, rc, uuid);
     }
 }
 

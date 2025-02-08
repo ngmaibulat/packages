@@ -1,8 +1,14 @@
 import fs from "node:fs/promises";
 
 import { VT } from "./vt";
+import { WebLog } from "@/logging/weblog";
 
-export async function runVT(cmd: string, args: string[], logPath: string) {
+export async function runVT(
+    cmd: string,
+    args: string[],
+    logPath: string,
+    uuid: string
+) {
     //create vt
     const vt = new VT();
 
@@ -20,6 +26,12 @@ export async function runVT(cmd: string, args: string[], logPath: string) {
 
     //stdout output
     console.log(out);
+
+    if (process.env.NGM_LOG_URL) {
+        const weblogger = new WebLog(process.env.NGM_LOG_URL);
+        await weblogger.insertOutput(uuid, out);
+        // await weblogger.insertLog(cwd, cmd, args, envFullPath, rc, uuid);
+    }
 
     return rc;
 }
