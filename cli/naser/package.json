@@ -1,0 +1,39 @@
+{
+  "name": "@aibulat/naser",
+  "version": "0.0.4",
+  "description": "Ansi to HTML converter",
+  "main": "./dist/index.js",
+  "types": "./dist/lib.d.ts",
+  "bin": {
+    "naser": "dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc; tsup",
+    "dev": "tsup --watch"
+  },
+  "keywords": [
+    "ansi",
+    "html"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/cli/naser#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "^1.2.2",
+    "@types/node": "^22.13.1",
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@aibulat/isfile": "^0.0.4",
+    "anser": "^2.3.0"
+  }
+}
