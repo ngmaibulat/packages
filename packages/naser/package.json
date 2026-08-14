@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/naser",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Ansi to HTML converter",
   "main": "./dist/index.js",
   "types": "./dist/lib.d.ts",
