@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repo layout
 
-A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*`) with a single root `pnpm-lock.yaml`. Each package under `packages/` is still independently versioned and published, and keeps its own `tsconfig.json`, `tsup.config.ts` and `publish.sh`.
+A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*`) with a single root `pnpm-lock.yaml`. Each package under `packages/` is still independently versioned and published, and keeps its own `tsconfig.json` and `tsup.config.ts`. Releases are driven from the root by `scripts/bump.ts` and `scripts/release.ts` — see **Releasing** below.
 
 - `packages/run` → `@aibulat/run`, the substantial package (4 bins: `run`, `logview`, `output`, `shell`).
 - `packages/naser` → `@aibulat/naser`, an ANSI→HTML CLI built on `anser`.
 - `apps/docs` → the VitePress documentation site, deployed to GitHub Pages at `https://ngmaibulat.github.io/packages/`. Private, never published to npm.
-- `examples/table` — workspace member, not published.
+- `examples/table` — workspace member, `private`, not published.
 - `examples/vt` — a Deno scratch experiment (`deno task dev`) using `@sigma/pty-ffi`. No `package.json`, so pnpm skips it; not published.
 - `examples/temporal` — loose scratch script, also without a `package.json`.
 
@@ -44,9 +44,29 @@ pnpm --filter docs run preview   # serve the built site, verifies the /packages/
 
 Its `base` is `/packages/` because GitHub Pages serves it under the repository name; the deploy is `.github/workflows/deploy-docs.yml`, which builds on push to `main`.
 
-`pnpm run alga` (inside a package) publishes: build → commit → `npm version patch` → `npm publish`. Only run it when explicitly asked.
-
 Adding a new CLI or entry point requires editing **both** the `entry[]` array in `tsup.config.ts` and the `bin` map in `package.json`.
+
+## Releasing
+
+Two root scripts in `scripts/`, run directly by Node's type stripping — they are `.ts` with no build step, which needs **Node ≥ 22.18** (stricter than the `engines.node` the packages declare). Never run either unless explicitly asked.
+
+```bash
+pnpm bump                 # patch every publishable package
+pnpm bump minor           # minor, all of them
+pnpm bump patch naser     # one package, and whatever depends on it
+pnpm bump --dry-run       # print the plan, write nothing
+pnpm bump --no-git        # write the manifests, skip the commit and tags
+```
+
+`scripts/bump.ts` rewrites versions **and** internal dependency ranges, cascading to any package whose range moved (a package whose dependency changed is a package whose contents changed). It refuses on a dirty worktree, an existing tag, a non-`x.y.z` version, or a manifest that does not round-trip through `JSON.stringify` with its own indent — the round-trip check is what lets it rewrite whole manifests and still promise a diff of only the changed lines. It then runs `pnpm install --lockfile-only`, commits (`release: @aibulat/run@0.2.22`) and annotated-tags with the **short** name (`run@0.2.22`, no scope).
+
+Then `git push --follow-tags` — a bare push leaves the tags behind.
+
+`scripts/release.ts` (`pnpm release`, `pnpm release:dry`) publishes in topological order. Every check runs against every package before anything reaches the registry: clean worktree, registry state, internal range consistency, credentials, then `typecheck` and `test`. Versions already on npm are **skipped, not failed**, so a half-finished release is safe to re-run.
+
+Publishing happens in CI, not on a laptop. `.github/workflows/publish.yml` fires on a push to `main` touching `packages/*/package.json` and authenticates with **npm trusted publishing** — OIDC, no token, no GitHub Environment. Two things there are load-bearing: the **filename** `publish.yml`, which npm binds each package's trusted publisher to, and the absence of `registry-url:` on `setup-node`, which would otherwise write an `.npmrc` whose empty `NODE_AUTH_TOKEN` shadows the OIDC exchange. `workflow_dispatch` with `dry_run` is the manual path.
+
+Both packages declare `"prepack": "pnpm run build"`. That is what puts `dist/` in the tarball — it is gitignored, and nothing else in CI builds it.
 
 ## Tests
 

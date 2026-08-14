@@ -6,7 +6,15 @@
   "scripts": {
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "bump": "node scripts/bump.ts",
+    "release": "node scripts/release.ts",
+    "release:dry": "node scripts/release.ts --dry-run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/semver": "^7.7.0",
+    "semver": "^7.7.1"
   },
   "repository": {
     "type": "git",

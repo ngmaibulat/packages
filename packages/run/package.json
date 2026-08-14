@@ -16,8 +16,13 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc && tsup",
     "dev": "tsup --watch",
-    "commit": "pnpm run build && git add . && git commit -a -m minor",
-    "alga": "bash publish.sh"
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "run",

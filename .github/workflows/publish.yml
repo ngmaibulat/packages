@@ -1,0 +1,81 @@
+# Publishes @aibulat/run and @aibulat/naser to npm with trusted publishing - no
+# token anywhere, in this repo or on a laptop. npm exchanges the OIDC claim
+# GitHub mints for a credential that is scoped to this repository and this file,
+# and lives for the length of the publish.
+#
+# The filename is load-bearing. npm binds each package's trusted publisher to
+# `publish.yml` by name; renaming this file revokes publishing until the npm-side
+# config is updated to match.
+#
+# Register the publisher on npmjs.com for each package - Settings > Trusted
+# Publisher > GitHub Actions - with repository `ngmaibulat/packages`, workflow
+# `publish.yml`, and the environment field left EMPTY. This job deliberately
+# declares no environment, and a mismatch there is a 401 that names no cause.
+
+name: publish
+
+on:
+    # A version only ever changes in a manifest, so this fires exactly when there
+    # is something to release and stays quiet for every docs and source commit.
+    # release.ts skips versions already on the registry, so a manifest edit that
+    # is not a bump is a no-op either way.
+    push:
+        branches: [main]
+        paths:
+            - packages/*/package.json
+
+    # Still here, and still the way to run a dry run - or to resume a release that
+    # died halfway from a commit that touches no manifest.
+    workflow_dispatch:
+        inputs:
+            dry_run:
+                description: Pack and validate without publishing to npm
+                type: boolean
+                default: false
+
+# id-token: write is what mints the OIDC claim npm exchanges - without it the
+# claim is never issued and the publish falls back to looking for a token that
+# does not exist. contents: read because nothing here writes to the repo.
+permissions:
+    contents: read
+    id-token: write
+
+concurrency:
+    group: publish
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+
+        steps:
+            - uses: actions/checkout@v4
+
+            # Version comes from "packageManager" in the root package.json.
+            - uses: pnpm/action-setup@v4
+
+            # Deliberately no `registry-url:` - it writes an .npmrc containing
+            # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}, and an empty
+            # NODE_AUTH_TOKEN shadows the OIDC exchange with a blank credential.
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 24
+                  cache: pnpm
+
+            # Trusted publishing landed in npm 11.5.1; the bundled npm may be older.
+            - name: Install an npm that speaks OIDC
+              run: npm install -g npm@latest
+
+            - run: pnpm install --frozen-lockfile
+
+            # scripts/release.ts runs typecheck and test itself, and runs them
+            # after its dirty-worktree check. Verifying in a step of its own here
+            # risks leaving build output behind and making the release refuse.
+            #
+            # On a push there is no `inputs` context at all, so this resolves to
+            # `release` - a dry run is only ever something you ask for by hand.
+            - name: Release
+              run: pnpm run ${{ inputs.dry_run && 'release:dry' || 'release' }}
+              env:
+                  NPM_CONFIG_PROVENANCE: true

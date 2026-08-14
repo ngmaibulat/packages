@@ -13,8 +13,13 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc && tsup",
     "dev": "tsup --watch",
-    "commit": "pnpm run build && git add . && git commit -a -m minor",
-    "alga": "bash publish.sh"
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "ansi",
@@ -39,5 +44,8 @@
   "dependencies": {
     "@aibulat/isfile": "^0.0.4",
     "anser": "^2.3.0"
+  },
+  "engines": {
+    "node": ">=22.5.0"
   }
 }
