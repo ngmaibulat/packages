@@ -20,7 +20,12 @@ export default defineConfig({
     splitting: false,
     minify: false,
     bundle: true,
-    target: "esnext",
+    platform: "node",
+    target: "node22",
+
+    // tsup strips the "node:" prefix by default, which turns "node:sqlite"
+    // into "sqlite" -- a package that does not exist. Keep the prefix.
+    removeNodeProtocol: false,
 
     onSuccess: async () => {
         exec("chmod +x dist/tests/*.js");

@@ -9,8 +9,12 @@
   },
   "type": "module",
   "scripts": {
-    "build": "tsc; tsup",
-    "dev": "tsup --watch"
+    "test": "node --import ./test/register.ts --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc && tsup",
+    "dev": "tsup --watch",
+    "commit": "pnpm run build && git add . && git commit -a -m minor",
+    "alga": "bash publish.sh"
   },
   "keywords": [
     "ansi",

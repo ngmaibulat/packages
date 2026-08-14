@@ -9,7 +9,12 @@ export default defineConfig({
     splitting: false,
     minify: false,
     bundle: true,
-    target: "esnext",
+    platform: "node",
+    target: "node22",
+
+    // tsup strips the "node:" prefix by default; keep it so builtin imports
+    // stay unambiguous (and so "node:sqlite" style specifiers keep working).
+    removeNodeProtocol: false,
 
     onSuccess: async () => {
         exec("chmod +x dist/index.js");

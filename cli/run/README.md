@@ -5,16 +5,11 @@
 
 ### Prerequisites
 
-The package has node-pty as a dependency. That is nodejs module written in C++.
-When installed via npm it is actually compiled. So, we need all required tools for that.
+None beyond NodeJS itself.
 
-- gcc
-- g++
-- make
-- python
-
-Python is used by node-gyp tool. Make sure to those those dependencies on your system.
-You can just use your system package manager to install those.
+The package uses `@lydell/node-pty` for its pseudoterminal. It ships prebuilt
+binaries for each platform and runs no install scripts, so nothing is compiled
+at install time and no build toolchain (gcc, make, python, node-gyp) is needed.
 
 ### FNM
 

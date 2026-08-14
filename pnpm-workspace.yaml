@@ -1,0 +1,9 @@
+packages:
+  - "cli/*"
+  - "examples/*"
+
+# esbuild (via tsup) links its prebuilt platform binary in a postinstall.
+# Nothing else here compiles anything: @lydell/node-pty ships prebuilt
+# binaries as optional per-platform deps and declares no install scripts.
+allowBuilds:
+  esbuild: true

@@ -45,6 +45,7 @@ export class FSMonitor {
         delete this.handlers[event];
     }
 
+    /** Start watching. Returns the chokidar watcher so callers can close it. */
     public watch() {
         const watcher = chokidar.watch(this.path, {
             ignoreInitial: true,
@@ -90,6 +91,8 @@ export class FSMonitor {
                 this.handlers[event](path, stats);
             }
         });
+
+        return watcher;
     }
 
     private isIgnored(path: string, stats: Stats | undefined): boolean {

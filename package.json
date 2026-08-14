@@ -1,0 +1,21 @@
+{
+  "name": "@aibulat/packages",
+  "private": true,
+  "type": "module",
+  "description": "Workspace root for the @aibulat CLI packages",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git"
+  },
+  "author": "Aibulat",
+  "license": "MIT",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

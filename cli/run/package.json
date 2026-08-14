@@ -12,10 +12,11 @@
   },
   "type": "module",
   "scripts": {
-    "test": "node --test",
-    "build": "tsc; tsup",
+    "test": "node --import ./test/register.ts --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc && tsup",
     "dev": "tsup --watch",
-    "commit": "tsc; tsup; git add . ; git commit -a -m minor",
+    "commit": "pnpm run build && git add . && git commit -a -m minor",
     "alga": "bash publish.sh"
   },
   "keywords": [
@@ -44,10 +45,13 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@lydell/node-pty": "^1.1.0",
     "chokidar": "^4.0.3",
     "cli-table3": "^0.6.5",
     "commander": "^13.1.0",
-    "dotenv": "^16.4.7",
-    "node-pty": "^1.0.0"
+    "dotenv": "^16.4.7"
+  },
+  "engines": {
+    "node": ">=22.5.0"
   }
 }

@@ -1,16 +1,14 @@
 #!/bin/env -S node --no-warnings
 
-import type { Stats } from "node:fs";
-
 import { existsSync } from "node:fs";
 import { Command } from "commander";
 import { FSMonitor } from "@/fsmonitor";
 import { run, runMultiple, runForever } from "@/lib";
 import { getLogDir } from "@/logging/logging"
+import { getExtensions, getEvents, replaceArgs } from "@/cli/args";
+import type { Events } from "@/cli/args";
 
 import packageJson from "$/package.json" with { type: "json" };
-
-type Events = "create" | "change" | "delete" | "all";
 
 interface ProgramOptions {
     envFile?: string;
@@ -22,51 +20,6 @@ interface ProgramOptions {
     monpath?: string;
     monext?: string;
     monevents?: string;
-}
-
-function getExtensions(ext: string | undefined) {
-    if (ext) {
-        return ext.split(",");
-    }
-
-    return [];
-}
-
-function getEvents(events: string  | undefined): Events[] {
-    if (!events) {
-        return ["all"];
-    }
-
-    const list = events.split(",");
-    const possibleEvents: Events[] = ["create", "change", "delete", "all"];
-
-    for (const ev of list) {
-        const allowed = possibleEvents.includes(ev as Events);
-        if (!allowed) {
-            const msg = `Invalid event: ${ev}`;
-            console.error(msg);
-            process.exit(1);
-        }
-    }
-
-    return list as Events[];
-}
-
-function replaceArgs(args: string[], path: string, stats: Stats | undefined) {
-    const newargs = [];
-
-    for (const arg of args) {
-        let narg = arg.replaceAll("%path", path);
-
-        if (stats) {
-            narg = narg.replaceAll("%size", stats.size.toString())
-            narg = narg.replaceAll("%mtime", stats.mtime.toString())
-        }
-
-        newargs.push(narg);
-    }
-
-    return newargs;
 }
 
 async function runStandard(exe: string, args: string[], options: ProgramOptions) {
@@ -151,8 +104,16 @@ async function runMonitoring(exe: string, args: string[], options: ProgramOption
 
     const path = options.monpath || ".";
     const extensions = getExtensions(options.monext);
-    const events = getEvents(options.monevents);
     const awaitWriteFinish = true;
+
+    let events: Events[];
+
+    try {
+        events = getEvents(options.monevents);
+    } catch (error) {
+        console.error((error as Error).message);
+        process.exit(1);
+    }
 
     const monitor = new FSMonitor(path, extensions, awaitWriteFinish);
 

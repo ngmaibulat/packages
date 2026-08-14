@@ -1,8 +1,7 @@
 #!/bin/env node
 
-import fs from "node:fs/promises";
 import isFile from "@aibulat/isfile";
-import Anser from "anser";
+import { convertFile } from "./lib";
 
 const argsCount = process.argv.length;
 
@@ -19,10 +18,7 @@ if (!exists) {
     process.exit(2);
 }
 
-const content = await fs.readFile(path, { encoding: "utf-8" });
-console.log(content);
-
-const converted = Anser.ansiToHtml(content);
+const converted = await convertFile(path);
 console.log(converted);
 
 // other option
