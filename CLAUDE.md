@@ -4,15 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repo layout
 
-A **pnpm workspace** (`pnpm-workspace.yaml`: `cli/*`, `examples/*`) with a single root `pnpm-lock.yaml`. Each package under `cli/` is still independently versioned and published, and keeps its own `tsconfig.json`, `tsup.config.ts` and `publish.sh`.
+A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*`) with a single root `pnpm-lock.yaml`. Each package under `packages/` is still independently versioned and published, and keeps its own `tsconfig.json`, `tsup.config.ts` and `publish.sh`.
 
-- `cli/run` → `@aibulat/run`, the substantial package (4 bins: `run`, `logview`, `output`, `shell`).
-- `cli/naser` → `@aibulat/naser`, an ANSI→HTML CLI built on `anser`.
-- `cli/vt` — a Deno scratch experiment (`deno task dev`) using `@sigma/pty-ffi`. No `package.json`, so pnpm skips it; not published.
+- `packages/run` → `@aibulat/run`, the substantial package (4 bins: `run`, `logview`, `output`, `shell`).
+- `packages/naser` → `@aibulat/naser`, an ANSI→HTML CLI built on `anser`.
+- `apps/docs` → the VitePress documentation site, deployed to GitHub Pages at `https://ngmaibulat.github.io/packages/`. Private, never published to npm.
 - `examples/table` — workspace member, not published.
-- `docs/`, `libs/` — notes; `libs/` is empty.
+- `examples/vt` — a Deno scratch experiment (`deno task dev`) using `@sigma/pty-ffi`. No `package.json`, so pnpm skips it; not published.
+- `examples/temporal` — loose scratch script, also without a `package.json`.
 
-`dist/` is untracked build output.
+`dist/` and `apps/docs/.vitepress/{dist,cache}` are untracked build output.
 
 ## Commands
 
@@ -33,6 +34,16 @@ pnpm --filter @aibulat/run run build   # tsc (typecheck + .d.ts) then tsup (bund
 pnpm --filter @aibulat/run run dev     # tsup --watch
 ```
 
+The docs site:
+
+```bash
+pnpm --filter docs run dev       # vitepress dev, http://localhost:5173/packages/
+pnpm --filter docs run build     # also runs as part of root `pnpm run build`
+pnpm --filter docs run preview   # serve the built site, verifies the /packages/ base path
+```
+
+Its `base` is `/packages/` because GitHub Pages serves it under the repository name; the deploy is `.github/workflows/deploy-docs.yml`, which builds on push to `main`.
+
 `pnpm run alga` (inside a package) publishes: build → commit → `npm version patch` → `npm publish`. Only run it when explicitly asked.
 
 Adding a new CLI or entry point requires editing **both** the `entry[]` array in `tsup.config.ts` and the `bin` map in `package.json`.
@@ -43,13 +54,13 @@ Native `node:test`, no framework. Tests live in `<package>/test/*.test.ts` and i
 
 ```bash
 pnpm --filter @aibulat/run run test
-cd cli/run && node --import ./test/register.ts --test test/vt.test.ts   # one file
-cd cli/run && node --import ./test/register.ts --test --test-name-pattern="Device Status" test/vt.test.ts
+cd packages/run && node --import ./test/register.ts --test test/vt.test.ts   # one file
+cd packages/run && node --import ./test/register.ts --test --test-name-pattern="Device Status" test/vt.test.ts
 ```
 
 Node strips the TypeScript types itself; the only missing piece is resolution, which `test/register.ts` supplies via `module.registerHooks`. It teaches Node the two things the sources rely on the bundler for: the `@/*` and `$/*` path aliases, and extensionless relative imports (`from "./librun"`). Every package's `test` script loads it with `--import`. Adding a package means copying that file.
 
-`src/tests/*.ts` in `cli/run` are **not** part of this suite — they are manual smoke scripts (`runvt`, `watch`, `sql`) that build to executable `dist/tests/*.js`.
+`src/tests/*.ts` in `packages/run` are **not** part of this suite — they are manual smoke scripts (`runvt`, `watch`, `sql`) that build to executable `dist/tests/*.js`.
 
 Notes for writing tests here:
 - `DBLog` takes a directory, so point it at an `fs.mkdtemp` dir rather than the real log store.

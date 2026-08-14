@@ -27,7 +27,7 @@
   "bugs": {
     "url": "https://github.com/ngmaibulat/packages/issues"
   },
-  "homepage": "https://github.com/ngmaibulat/packages/tree/main/cli/naser#readme",
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/naser#readme",
   "author": "Aibulat",
   "license": "MIT",
   "devDependencies": {

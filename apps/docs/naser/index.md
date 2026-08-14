@@ -1,9 +1,9 @@
-### Overview
+# @aibulat/naser
 
-- CLI tool to convert files with ANSI output to HTML
-- Based on Anser package
+A CLI tool to convert files containing ANSI output into HTML, based on the
+[anser](https://www.npmjs.com/package/anser) package.
 
-### Install/Upgrade
+## Install / upgrade
 
 ```bash
 npm install -g @aibulat/naser
@@ -11,7 +11,7 @@ npm update -g @aibulat/naser
 which naser
 ```
 
-### Install/Upgrade via Bun
+### Via Bun
 
 ```bash
 bun install -g @aibulat/naser
@@ -20,7 +20,7 @@ bun pm ls -g
 which naser
 ```
 
-### Use
+## Use
 
 ```bash
 echo -e "\e[32m Hello \e[0m" > out.txt

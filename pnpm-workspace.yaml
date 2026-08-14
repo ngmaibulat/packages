@@ -1,5 +1,6 @@
 packages:
-  - "cli/*"
+  - "apps/*"
+  - "packages/*"
   - "examples/*"
 
 # esbuild (via tsup) links its prebuilt platform binary in a postinstall.

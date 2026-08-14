@@ -1,3 +1,5 @@
+Full documentation: https://ngmaibulat.github.io/packages/run/
+
 ### Support
 
 - NodeJS v22.5.0 and above
