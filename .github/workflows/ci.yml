@@ -21,15 +21,15 @@ jobs:
         timeout-minutes: 15
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             # Version comes from "packageManager" in the root package.json.
-            - uses: pnpm/action-setup@v4
+            - uses: pnpm/action-setup@v6
 
             # 26 because packages/http declares `engines.node: ">=26"` and runs its
             # suite straight off src/*.ts under native type stripping. Every other
             # member asks for less, so the highest floor is the one to run.
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: 26
                   cache: pnpm
@@ -91,11 +91,11 @@ jobs:
         timeout-minutes: 10
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - uses: pnpm/action-setup@v4
+            - uses: pnpm/action-setup@v6
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: 26
                   cache: pnpm
@@ -106,7 +106,7 @@ jobs:
 
             # No cache and no install here - this step only runs `node` against the
             # already-built dist.
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: 20
 
