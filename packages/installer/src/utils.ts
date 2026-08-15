@@ -1,3 +1,8 @@
+// genSql() used to reach for the `fs` global that `zx/globals` installs, which
+// only worked because every entry importing this module imported the globals
+// first. Name the dependency instead.
+import fs from "node:fs";
+
 export function isRoot() {
     if (typeof process.getuid != "function") {
         return false;

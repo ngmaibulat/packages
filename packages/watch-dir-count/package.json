@@ -48,7 +48,6 @@
   "license": "MIT",
   "devDependencies": {
     "@arethetypeswrong/core": "^0.18.5",
-    "@types/bunyan": "^1.8.8",
     "@types/ejs": "^3.1.2",
     "@types/node": "^22.13.1",
     "@types/nodemailer": "^6.4.7",
@@ -60,11 +59,11 @@
     "@aibulat/fs": "^0.0.10",
     "@aibulat/json": "^0.0.11",
     "@colors/colors": "^1.5.0",
-    "bunyan": "^1.8.15",
     "dotenv": "^16.0.3",
     "ejs": "^3.1.9",
     "handlebars": "^4.7.7",
-    "nodemailer": "^6.9.1"
+    "nodemailer": "^6.9.1",
+    "pino": "^10.3.1"
   },
   "engines": {
     "node": ">=22.5.0"

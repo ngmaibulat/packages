@@ -45,7 +45,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "zx": "^7.1.1"
+    "zx": "^8.8.5"
   },
   "engines": {
     "node": ">=22.5.0"

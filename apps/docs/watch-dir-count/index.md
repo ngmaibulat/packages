@@ -13,7 +13,6 @@ npm install -g @aibulat/watch-dir-count
 ## Run
 
 ```bash
-mkdir log        # the bunyan streams in log.cfg.json must have a directory
 wdc
 ```
 
@@ -50,8 +49,9 @@ Handlebars fills `from`, `to`, `subject`, `directory`, `numFiles`, `date`,
 
 ### `log.cfg.json`
 
-Passed straight to [bunyan](https://github.com/trentm/node-bunyan) as its
-logger options, and read from the working directory:
+Read from the working directory. The schema is the one bunyan used — the
+logger is [pino](https://getpino.io) now, and the file is translated into a
+`pino.multistream()` over one destination per entry:
 
 ```json
 {
@@ -63,8 +63,14 @@ logger options, and read from the working directory:
 }
 ```
 
-The directories named in `path` must already exist — bunyan does not create
-them, and the process exits on the resulting `ENOENT`.
+The directories named in `path` are created if they are missing. `level`
+accepts either the names above or bunyan's numbers (`trace` 10 … `fatal` 60),
+which are pino's too. Each line is JSON with an ISO-8601 `time`, and `name`
+tags every record.
+
+Omit `streams` entirely to log to stdout. `"type": "rotating-file"` is
+rejected — it was the one bunyan feature with no pino equivalent here; use
+`logrotate` instead.
 
 ## Failure behaviour
 

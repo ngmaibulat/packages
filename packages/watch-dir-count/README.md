@@ -9,7 +9,6 @@ Watch count of files in a directory and
 
 ```bash
 npm install -g @aibulat/watch-dir-count
-mkdir log
 git clone git@github.com:ngmaibulat/email-templates-wdc.git
 # create .env
 # create log.cfg.json
@@ -41,7 +40,11 @@ SMTP_PASS=""
 
 ### Logger configuration
 
-Filename: `log.cfg.json`
+Filename: `log.cfg.json`, read from the working directory. The schema is the one
+bunyan used; the logger is [pino](https://getpino.io) now, and the file is
+translated into one destination per stream. Directories named in `path` are
+created if missing, `level` accepts the names below or bunyan's numbers, and
+`"type": "rotating-file"` is rejected — use `logrotate`.
 
 Example:
 

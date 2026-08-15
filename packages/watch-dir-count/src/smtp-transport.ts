@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer'
 import dotenv from 'dotenv'
 
-import { logger } from './logger.js'
+import { mailLogger } from './logger.js'
 
 ////////////////////////////////////////
 dotenv.config()
@@ -21,7 +21,7 @@ export type smtpOptions = {
     secure: boolean
     connectionTimeout: number
     auth?: smtpAuth
-    logger: typeof logger
+    logger: typeof mailLogger
     debug: boolean
 }
 
@@ -41,7 +41,7 @@ export function getSmtpOptions() {
         port: getSmtpPort(),
         secure: false,
         connectionTimeout: 10000,
-        logger: logger,
+        logger: mailLogger,
         debug: true,
     }
 
