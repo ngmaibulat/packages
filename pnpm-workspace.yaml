@@ -4,11 +4,21 @@ packages:
   - "examples/*"
 
 # esbuild (via vitepress -> vite) links its prebuilt platform binary in a
-# postinstall. Nothing else here compiles anything: both @lydell/node-pty and
-# rolldown (via tsdown) ship prebuilt binaries as optional per-platform deps and
-# declare no install scripts.
+# postinstall. @lydell/node-pty and rolldown (via tsdown) ship prebuilt binaries
+# as optional per-platform deps and declare no install scripts.
+#
+# posix is the one true native compile in the tree: packages/fs uses it for
+# getgrnam(), it has no prebuilt binaries, and it runs node-gyp on install. That
+# needs a toolchain (make, a C++ compiler, python) on any machine that installs
+# this workspace, CI included.
+# dtrace-provider arrives as an optional dependency of bunyan (via
+# packages/watch-dir-count). It is a native DTrace binding that is useful on
+# illumos/macOS and pointless on the Linux CI runner; bunyan wraps its require in
+# a try/catch and simply skips DTrace when it is missing. Left unbuilt on purpose.
 allowBuilds:
+  dtrace-provider: false
   esbuild: true
+  posix: true
 
 # A minimumReleaseAge policy (a delay before a freshly published version may be
 # installed) rejects these three, which are the exact versions packages/restclients
@@ -20,3 +30,55 @@ minimumReleaseAgeExclude:
   - oxlint@1.78.0
   - '@oxlint/*'
   - '@types/node@26.2.0'
+
+# @sveltejs/package reaches TypeScript through a bare `await import('typescript')`
+# without declaring it as a dependency of any kind. Under pnpm's isolated layout
+# that resolves out of the hidden store (node_modules/.pnpm/node_modules), which
+# holds whichever copy pnpm happened to hoist - and this workspace has three
+# TypeScript majors in it (5.7 in run/naser, 6.0 in svelte-admin-kit, 7.0 in
+# http/restclients/funtest). It hoisted 7.0, whose entry point exports no `ts.sys`,
+# and `svelte-package` died in load_tsconfig with "Cannot read properties of
+# undefined (reading 'readFile')" - a build failure caused entirely by an unrelated
+# package's devDependency.
+#
+# Declaring the peer makes pnpm link the *importer's* TypeScript into
+# @sveltejs/package's own node_modules, where it wins over the hidden store. It
+# resolves against packages/svelte-admin-kit, so it gets 6.0.3. Remove this once
+# @sveltejs/package declares typescript itself.
+packageExtensions:
+  '@sveltejs/package':
+    peerDependencies:
+      typescript: '*'
+
+# packages/svelte-admin-kit pins all eleven of its @tiptap/* dependencies to an exact
+# 3.27.3 for a reason: tiptap's extensions are a single unit that registers against one
+# copy of @tiptap/core, and its own peer ranges are exact. But @tiptap/starter-kit@3.27.3
+# depends on the leaf extensions by caret, so a lockfile resolved today gives twenty of
+# them 3.29.2 while core stays at 3.27.3 - which is precisely the mismatch `pnpm peers
+# check` then reports. The repo this package came from had a lockfile old enough that the
+# whole tree landed on 3.27.3; a fresh resolve here does not.
+#
+# Nothing in the test suite renders the editor, so this would not surface until runtime.
+# Pin the transitives to match the direct ones. Bump all of these together with the
+# eleven ranges in packages/svelte-admin-kit/package.json, never separately.
+overrides:
+  '@tiptap/extension-blockquote': 3.27.3
+  '@tiptap/extension-bold': 3.27.3
+  '@tiptap/extension-bullet-list': 3.27.3
+  '@tiptap/extension-code': 3.27.3
+  '@tiptap/extension-code-block': 3.27.3
+  '@tiptap/extension-document': 3.27.3
+  '@tiptap/extension-dropcursor': 3.27.3
+  '@tiptap/extension-gapcursor': 3.27.3
+  '@tiptap/extension-hard-break': 3.27.3
+  '@tiptap/extension-heading': 3.27.3
+  '@tiptap/extension-horizontal-rule': 3.27.3
+  '@tiptap/extension-italic': 3.27.3
+  '@tiptap/extension-link': 3.27.3
+  '@tiptap/extension-list-item': 3.27.3
+  '@tiptap/extension-list-keymap': 3.27.3
+  '@tiptap/extension-ordered-list': 3.27.3
+  '@tiptap/extension-paragraph': 3.27.3
+  '@tiptap/extension-strike': 3.27.3
+  '@tiptap/extension-text': 3.27.3
+  '@tiptap/extension-underline': 3.27.3

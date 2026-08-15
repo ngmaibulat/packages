@@ -1,0 +1,118 @@
+/*
+ * The dialog surface and its two content bands, shared by Dialog, DialogBody
+ * and DialogFooter.
+ *
+ * A plain (global) stylesheet rather than scoped <style> blocks, for two
+ * reasons beyond the deduplication that `inputSurface.css` already documents.
+ * First, these three components must agree on one set of horizontal paddings,
+ * and a scoped block per component is exactly how that agreement gets lost.
+ * Second, `::backdrop` is a pseudo-element of the <dialog> itself: Svelte's
+ * scoping rewrites selectors to match elements it can see in the component's
+ * markup, and the backdrop is not one of them.
+ */
+/*
+ * The surface is a THREE-BAND COLUMN — head, body, footer — and the body is the
+ * only band that scrolls. That is what keeps the title and the action buttons on
+ * screen while a long form or a long list moves underneath them.
+ *
+ * Before this, the surface set `overflow: hidden` and no `max-height`. The UA
+ * default (`calc(100% - 6px - 2em)`) still clamped it to the viewport, so any
+ * dialog taller than the window had its overflow CLIPPED WITH NO SCROLLBAR —
+ * content that was rendered, was in the DOM, and could not be reached by any
+ * means. An eleven-card picker showed three. Every long dialog in every consumer
+ * had it; it is invisible until the content grows past the fold, which is why it
+ * survived twenty-one call sites.
+ *
+ * `min-height: 0` on the body is the load-bearing half of the fix: a flex item's
+ * default `min-height: auto` refuses to shrink below its content, so the body
+ * would keep its full height, overflow the surface, and be clipped exactly as
+ * before — with `overflow-y: auto` set and doing nothing.
+ */
+.sak-dialog {
+	margin: auto;
+	box-sizing: border-box;
+	/* dvh, so a mobile browser's retracting URL bar cannot leave the footer
+	   under the viewport edge. The second term keeps the UA clamp as a floor. */
+	max-height: min(var(--sak-dialog-max-height, 90dvh), 100%);
+	overflow: hidden;
+	border: 1px solid var(--sak-dialog-border, #e2e8f0);
+	border-radius: var(--sak-radius-lg, 1rem);
+	background: var(--sak-dialog-bg, #ffffff);
+	padding: 0;
+	color: var(--sak-dialog-text, #020617);
+	box-shadow: var(--sak-dialog-shadow, 0 25px 50px -12px rgb(15 23 42 / 0.25));
+}
+
+/*
+ * `[open]` IS LOAD-BEARING, not tidiness. The UA stylesheet hides a closed
+ * dialog with `dialog:not([open]) { display: none }`, and an author `display`
+ * on the bare `.sak-dialog` beats it — so declaring the column layout
+ * unconditionally renders EVERY closed dialog inline, in the middle of whatever
+ * page mounted it. Caught in review with the app's global search panel sitting
+ * at the bottom of an unrelated screen.
+ */
+.sak-dialog[open] {
+	display: flex;
+	flex-direction: column;
+}
+
+.sak-dialog-sm {
+	width: var(--sak-dialog-width-sm, min(92vw, 28rem));
+}
+
+.sak-dialog-md {
+	width: var(--sak-dialog-width-md, min(92vw, 36rem));
+}
+
+.sak-dialog-lg {
+	width: var(--sak-dialog-width-lg, min(92vw, 40rem));
+}
+
+.sak-dialog::backdrop {
+	background: var(--sak-dialog-backdrop, rgb(15 23 42 / 0.5));
+	backdrop-filter: blur(2px);
+}
+
+/* flex-shrink: 0 on both bars — without it a long body squeezes the title and
+   the buttons instead of scrolling, which is the failure this fix exists to
+   avoid, just wearing a different face. */
+.sak-dialog-head {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	border-bottom: 1px solid var(--sak-dialog-border, #e2e8f0);
+	background: var(--sak-dialog-bar-bg, #f8fafc);
+	padding: var(--sak-dialog-bar-pad-y, 1rem) var(--sak-dialog-pad-x, 1.5rem);
+}
+
+.sak-dialog-title {
+	margin: 0;
+	/* Its own token rather than `--sak-font-size-lg`. A dialog title is a
+	   heading, and the generic `lg` step of a control scale is body-sized (1rem)
+	   — reusing it would silently shrink every dialog title in any app that maps
+	   the scale to its own. */
+	font-size: var(--sak-dialog-title-size, 1.125rem);
+	font-weight: 600;
+}
+
+.sak-dialog-body {
+	/* The one band that scrolls. `min-height: 0` is not optional — see the note
+	   on .sak-dialog. */
+	min-height: 0;
+	flex: 1 1 auto;
+	overflow-y: auto;
+	padding: var(--sak-dialog-body-pad-y, 1.5rem) var(--sak-dialog-pad-x, 1.5rem);
+}
+
+.sak-dialog-footer {
+	display: flex;
+	flex-shrink: 0;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--sak-gap, 0.5rem);
+	border-top: 1px solid var(--sak-dialog-border, #e2e8f0);
+	background: var(--sak-dialog-bar-bg, #f8fafc);
+	padding: var(--sak-dialog-bar-pad-y, 1rem) var(--sak-dialog-pad-x, 1.5rem);
+}

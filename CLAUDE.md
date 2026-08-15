@@ -11,12 +11,22 @@ A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*
 - `packages/restclients` → `@aibulat/restclients`, typed `fetch` wrappers around nine public REST APIs. A library, not a CLI: no `bin`, subpath exports only, must stay browser-safe.
 - `packages/naser` → `@aibulat/naser`, an ANSI→HTML CLI built on `anser`.
 - `packages/funtest` → `@aibulat/funtest`, live smoke tests for public REST APIs, published as runnable reference code (`bin`: `funtest` → `bin/run.sh`).
+- `packages/isfile` → `@aibulat/isfile`, a one-function file-existence check. The leaf of the internal dependency graph.
+- `packages/json` → `@aibulat/json`, `readJson<T>()` over `isfile`.
+- `packages/fs` → `@aibulat/fs`, filesystem helpers plus an `fs` bin. The only package with a native compile (`posix`) and a WASM dep (`@npcz/magic`).
+- `packages/mark` → `@aibulat/mark`, a terminal Markdown renderer (`bin`: `mark`).
+- `packages/sendeml` → `@aibulat/sendeml`, sends raw `.eml` files to SMTP, including Haraka queue dirs (`bin`: `sendeml`). Mid-restructure — see below.
+- `packages/watch-dir-count` → `@aibulat/watch-dir-count`, polls a directory's file count and fires a command plus an email over a threshold (`bin`: `wdc`). Ships `templates/`.
+- `packages/auth` → `@aibulat/auth`, bcrypt credentials in a knex-backed table (`bin`: `auth`, `bcrypt`, `bcrypt-compare`).
+- `packages/installer` → `@aibulat/installer`, Ubuntu provisioning scripts (`bin`: `i-ubuntu-mysql`, `i-ubuntu-vim`, `c-vim`, `gen-pw`).
+- `packages/ctl-ufw` → `@aibulat/ctl-ufw`, configures ufw from a JSON port list (`bin`: `ctl-ufw`). **Directory name is `ctl-ufw`, not `ufw`** — the release tag is derived from the basename.
+- `packages/svelte-admin-kit` → `@aibulat/svelte-admin-kit`, a Svelte 5 admin-UI component library (29 components, 15 subpath exports). **The one member that does not build with tsdown** — see **The `svelte-package` exception** below. Moved in from the `siem-tracker` repo; never published from there.
 - `apps/docs` → the VitePress documentation site, deployed to GitHub Pages at `https://ngmaibulat.github.io/packages/`. Private, never published to npm.
 - `examples/table` — workspace member, `private`, not published.
 - `examples/vt` — a Deno scratch experiment (`deno task dev`) using `@sigma/pty-ffi`. No `package.json`, so pnpm skips it; not published.
 - `examples/temporal` — loose scratch script, also without a `package.json`.
 
-`dist/` and `apps/docs/.vitepress/{dist,cache}` are untracked build output.
+`dist/`, `.svelte-kit/` (svelte-package's staging dir) and `apps/docs/.vitepress/{dist,cache}` are untracked build output.
 
 ## Commands
 
@@ -28,7 +38,7 @@ pnpm run build       # pnpm -r run build
 pnpm run test        # pnpm -r run test      — offline, always
 pnpm run test:live   # pnpm -r run test:live — talks to the real internet
 pnpm run typecheck   # pnpm -r run typecheck
-pnpm run lint        # pnpm -r run lint      — only packages/restclients defines it
+pnpm run lint        # pnpm -r run lint      — only restclients and svelte-admin-kit define it
 ```
 
 `pnpm run test` is hermetic and must stay that way: it is what CI gates on. The two
@@ -42,7 +52,14 @@ Scope to one package with `--filter`, or `cd` into it:
 pnpm --filter @aibulat/run run test
 pnpm --filter @aibulat/run run build   # tsdown: bundle, .d.ts, publint and attw
 pnpm --filter @aibulat/run run dev     # tsdown --watch
+
+pnpm --filter @aibulat/svelte-admin-kit run build   # svelte-package && publint
+pnpm --filter @aibulat/svelte-admin-kit run dev     # svelte-package --watch
 ```
+
+`svelte-admin-kit`'s `exports` map resolves into `dist/`, so nothing can consume it until
+`build` has run at least once — a fresh `pnpm install` alone leaves it unresolvable. Use the
+watcher while developing against it; without one, edits under `src/` silently have no effect.
 
 The docs site:
 
@@ -76,11 +93,13 @@ Then `git push --follow-tags` — a bare push leaves the tags behind.
 
 Publishing happens in CI, not on a laptop. `.github/workflows/publish.yml` fires on a push to `main` touching `packages/*/package.json` and authenticates with **npm trusted publishing** — OIDC, no token, no GitHub Environment. Every published package needs its trusted publisher registered on npmjs.com against repository `ngmaibulat/packages` and workflow `publish.yml`, with the environment field left **empty**; a package whose publisher still points at its old standalone repo fails with a 401 that names no cause. Two things there are load-bearing: the **filename** `publish.yml`, which npm binds each package's trusted publisher to, and the absence of `registry-url:` on `setup-node`, which would otherwise write an `.npmrc` whose empty `NODE_AUTH_TOKEN` shadows the OIDC exchange. `workflow_dispatch` with `dry_run` is the manual path.
 
-Every published package declares `"prepack": "pnpm run build"`. That is what puts `dist/` in the tarball — it is gitignored, and nothing else in CI builds it. Never add `prepublishOnly` to a package: `release.ts` already runs `typecheck` and `test` at the root before anything is published, and a second in-package chain double-runs the suite in the middle of a publish.
+A **brand-new package cannot bootstrap through this workflow.** npm only exposes trusted-publisher settings for a package that already exists, so the first version has to go up by hand (`npm publish` from the package directory, granular token or 2FA) *before* the manifest lands on `main`; only then can the publisher be registered and CI take over. Pushing first is not destructive — `release.ts` skips versions already on the registry, so the next run is a no-op — but the `publish` job goes red with the same causeless 401 until the registration exists. `@aibulat/svelte-admin-kit@0.2.0` is in exactly this state: added to the repo, never published, no trusted publisher registered.
+
+Every published package declares `"prepack": "pnpm run build"`. That is what puts `dist/` in the tarball — it is gitignored, and nothing else in CI builds it. (For `svelte-admin-kit` that `build` is `svelte-package`, not tsdown, but the contract is identical.) Never add `prepublishOnly` to a package: `release.ts` already runs `typecheck` and `test` at the root before anything is published, and a second in-package chain double-runs the suite in the middle of a publish.
 
 ## Tests
 
-Native `node:test`, no framework. Tests live in `<package>/test/*.test.ts` (`tests/` in `restclients`, `src/*.test.ts` in `funtest`) and import the real `src/*.ts` — nothing is built first.
+Native `node:test`, no framework, everywhere except `svelte-admin-kit` — which uses **vitest**, because a Svelte toolchain needs a Svelte-aware transform. Tests live in `<package>/test/*.test.ts` (`tests/` in `restclients`, `src/*.test.ts` in `funtest`, `src/tests/*.test.ts` in `svelte-admin-kit`) and import the real `src/*.ts` — nothing is built first.
 
 ```bash
 pnpm --filter @aibulat/run run test
@@ -88,11 +107,11 @@ cd packages/run && node --import ./test/register.ts --test test/vt.test.ts   # o
 cd packages/run && node --import ./test/register.ts --test --test-name-pattern="Device Status" test/vt.test.ts
 ```
 
-Node strips the TypeScript types itself; the only missing piece is resolution, which `test/register.ts` supplies via `module.registerHooks`. It teaches Node the two things the sources rely on the bundler for: the `@/*` and `$/*` path aliases, and extensionless relative imports (`from "./librun"`). `run` and `naser` load it with `--import` in their `test` script; a new package written in that style needs a copy of the file.
+Node strips the TypeScript types itself; the only missing piece is resolution, which `test/register.ts` supplies via `module.registerHooks`. It teaches Node the two things the sources rely on the bundler for: the `@/*` and `$/*` path aliases, and extensionless relative imports (`from "./librun"`). `run`, `naser`, `isfile`, `fs` and `sendeml` load it with `--import` in their `test` script; a new package written in that style needs a copy of the file. The copy in the three migrated packages carries one extra branch — a `.js` → `.ts` candidate — because their sources name the emitted sibling (`from './dir.js'`) rather than importing extensionless.
 
 `http`, `restclients` and `funtest` need no `register.ts`: they import with explicit `.ts` specifiers (`from './cli.ts'`) and use no path aliases, so bare Node resolves them. That is a deliberate second convention, not an oversight — see **Conventions** below.
 
-`src/tests/*.ts` in `packages/run` are **not** part of this suite — they are manual smoke scripts (`runvt`, `watch`, `sql`) that build to executable `dist/tests/*.js`.
+`src/tests/*.ts` in `packages/run` are **not** part of this suite — they are manual smoke scripts (`runvt`, `watch`, `sql`) that build to executable `dist/tests/*.js`. The identically named `src/tests/` in `svelte-admin-kit` **is** its real suite; the collision is unfortunate but the two are unrelated.
 
 Notes for writing tests here:
 - `DBLog` takes a directory, so point it at an `fs.mkdtemp` dir rather than the real log store.
@@ -139,21 +158,59 @@ These three moved in from standalone repos. They still differ from `run`/`naser`
 
 Every subpath barrel re-exports `HttpError` from `core` so consumers can `instanceof`-check without a second import, and that only works while the nine bundles share one copy of the class through a split chunk. Under tsup this needed `splitting: true`; in tsdown splitting cannot be turned off, so it is structural rather than configurable. `ci.yml`'s `consumer` job asserts the identity either way.
 
-`oxlint` (`.oxlintrc.json`) is the only linter in the repo and the only `lint` script.
+`oxlint` (`.oxlintrc.json`) lints this package. It is not the repo's only linter — `svelte-admin-kit` brings ESLint, because oxlint cannot parse `.svelte`.
 
 **`funtest`** — not a library. The published artifact is compiled test files; `bin/run.sh` prefers `dist/*.test.js` and falls back to `src/*.test.ts`, resolving `$0` through symlinks and passing explicit paths because Node's test runner skips `node_modules` during discovery. It declares **no `test` script** — its whole suite is live — which is what keeps root `pnpm run test` hermetic.
 
+## The nine packages moved in from standalone repos
+
+`isfile`, `json`, `fs`, `mark`, `sendeml`, `watch-dir-count`, `auth`, `installer` and `ctl-ufw` were nine separate one-package repos, each with its own lockfile, its own `tsc`/`esbuild`/`rollup` build and its own `publish.sh`. They were copied in (no history graft; the originals still exist under `~/projects/npm/`) and converted to the repo's conventions in one pass. They follow the `run`/`naser` **alias style** — tsconfig `paths`, `test/register.ts` under `node --test`.
+
+**The internal dependency graph now lives here.** `isfile` is the leaf; `json`, `fs`, `mark`, `naser` and `sendeml` depend on it, and `watch-dir-count` depends on `fs` and `json`. `scripts/release.ts` publishes in that topological order and `scripts/bump.ts` cascades bumps through it. The ranges are **plain semver, never `workspace:*`** — pnpm still links them locally because the local version satisfies the range. Two ranges were unsatisfiable on arrival and had to be corrected: `json` asked for `isfile@^0.0.3` (caret does not cross the patch on `0.0.x`) and `watch-dir-count` asked for `json@^0.0.8`, a version that does not exist.
+
+**Their `register.ts` has an extra resolution branch.** These sources came from `tsc`-built repos, so sibling imports name the emitted file (`from './fileType.js'`). `run`/`naser` import extensionless and never needed that, so the copy in these packages adds a `.js` → `.ts` candidate to `probe()`. Do not "simplify" it back.
+
+**Type-only imports had to be marked as such.** Written for `tsc`, these sources imported types as values (`import { PathLike } from 'node:fs'`, `import { FileStat } from './types.js'`). That erases silently under `tsc` but breaks twice here: rolldown fails the build with `MISSING_EXPORT`, and Node's type-stripping emits a real named import that does not exist at runtime. Every such import now carries the `type` modifier. New code in these packages must too.
+
+**`fs` is the install risk.** `posix` is a genuine native compile — no prebuilt binaries, node-gyp on install — so it is allow-listed in `pnpm-workspace.yaml` and needs make, a C++ compiler and python on every machine that installs the workspace, CI included. It builds clean on Node 26 (warnings only). `@npcz/magic` carries libmagic as WASM and `getFileType` initialises it at module load, so importing `@aibulat/fs` is not free. libmagic's wording is version-dependent — the filetype test matches `/JSON/` rather than an exact phrase, because the same file reports `JSON data` on older releases and `JSON text data` on newer ones. `dtrace-provider` (bunyan's optional DTrace binding, via `watch-dir-count`) is deliberately **not** built: bunyan try/catches its require.
+
+**`installer` and `ctl-ufw` no longer shebang to `zx`.** Their bins used `#!/usr/bin/env zx` while declaring `zx` only as a devDependency, so the published commands depended on something consumers would not have. They now use the repo-standard node shebang, `import "zx/globals"` at the top of each entry, and `zx` as a real dependency. `installer`'s old `build.sh` is gone — it shelled out to an undeclared global `rollup` and ran `git add .`.
+
+**Only three of the nine have a `test` script.** `isfile`, `fs` and `sendeml` ship real tests; the other six declared a `test` script with no test files, and following `funtest`'s precedent they now declare none rather than passing vacuously. `sendeml`'s suite asserted on a `./queue` directory that only exists after `getsamples.sh` downloads a corpus — it uses `fs.mkdtemp` instead, so root `pnpm run test` stays hermetic. Nothing in these packages talks to MySQL or SMTP under `test`.
+
+**`watch-dir-count` ships `templates/`** (listed in `files`) and resolves the default template by walking up from `import.meta.dirname` to find the directory. The old `./templates/default.eml` only worked when the process happened to start in the package root, which an installed global never does. The walk rather than a fixed `../templates` is the same lesson as `http`'s `link.ts`: splitting is unconditional, so the module's depth is not fixed. Its `log.cfg.json` is read from the *working* directory and the log dirs it names must already exist — bunyan does not create them.
+
+**`sendeml` is mid-restructure and was moved as-is.** `src/mailsend/smtp.ts` duplicates `src/smtp.ts` line for line, `src/server/deliver.smtp.ts` is empty, thirteen files under `filter/`, `filterattach/`, `sign/` and `encrypt/` are one-line placeholders, and `emailjs` is declared but never imported. That is upstream state, not migration damage; leave it alone unless asked to finish the restructure.
+
+Three latent bugs surfaced when these packages met a `typecheck` script for the first time, and were fixed rather than suppressed: `fs` set `FileMagic.defaulFlags` (a typo — the flag never applied), `auth` called `knexpkg.knex(...)` where knex 2.x wants the named export, and `watch-dir-count`'s `render-hbs.ts` demo called `renderEmail` with two of its four arguments. `mark` carries one deliberate cast: `@types/marked-terminal` is stuck at 3.x with no 4.x/5.x on npm and `marked-terminal` ships no types, so its renderer does not structurally match what `@types/marked@4` wants. The two are compatible at runtime; only the stubs disagree.
+
+## `@aibulat/svelte-admin-kit` and the `svelte-package` exception
+
+This is the only member that does not build with tsdown, and the reason is structural rather than a preference. A Svelte component library ships **uncompiled `.svelte` source** alongside generated `.d.ts`: the consuming app's own Svelte compiler is what turns it into JS, which is what lets each app pick its own compiler options, hydration mode, dev warnings and preprocessors. Precompiling here — which is all tsdown could do — takes that away and breaks HMR downstream. `svelte-package` (`@sveltejs/package`) exists to do exactly this, so `build` is `svelte-package && publint`.
+
+Consequences of that, all of which differ from every other package here:
+
+- **`svelte-package` reads `src/lib`, not `src`.** It copies `src/lib` → `dist` (`.svelte` files pass through untouched, `.ts` gets transpiled, `.d.ts` gets generated per file). `src/tests/` sits outside `src/lib` on purpose and never ships.
+- **The `exports` map is hand-written and points into `dist/`.** There is no `entry[]` to keep in sync, but adding a subpath still means editing **both** the `exports` map and the barrel it names — the analogue of the `entry[]`/`bin` rule for the tsdown packages. `pnpm --filter @aibulat/svelte-admin-kit run build` is what proves the two agree; publint fails the build on a target that does not exist.
+- **Each entry carries a `"svelte"` export condition** next to `types`/`default`. That is how a bundler knows to hand the file to the Svelte compiler. Dropping it makes consumers try to execute `.svelte` files as JS.
+- **No `attw`.** The repo runs `publint` + `attw` in `build` everywhere except `funtest`; this package is the second carve-out. attw has no meaningful verdict on a public surface made of `.svelte` files. `publint` still runs.
+- **The build is not hermetic against the rest of the workspace.** `@sveltejs/package` reaches TypeScript through a bare `await import('typescript')` that it declares nowhere, so under pnpm's isolated layout it resolves out of the hidden store (`node_modules/.pnpm/node_modules`). This workspace has three TypeScript majors in it — 5.7 (`run`, `naser`), 6.0 (`svelte-admin-kit`), 7.0 (`http`, `restclients`, `funtest`) — and pnpm hoisted 7.0, whose entry point exports no `ts.sys`. `svelte-package` then died in `load_tsconfig` with `Cannot read properties of undefined (reading 'readFile')`, a build failure caused entirely by an unrelated package's devDependency. The fix is a `packageExtensions` entry in `pnpm-workspace.yaml` declaring `typescript` as a peer of `@sveltejs/package`, which makes pnpm link the importer's copy (6.0.3) into its own `node_modules`, where it beats the hidden store. **Removing that entry re-breaks the build**, and the error names neither TypeScript nor the package that pulled the wrong one in.
+
+- **The eleven `@tiptap/*` ranges are exact, and `pnpm-workspace.yaml` pins twenty more.** tiptap's extensions register against one copy of `@tiptap/core` and its peer ranges are exact, so the tree has to be uniform. But `@tiptap/starter-kit` depends on the leaf extensions by *caret*, so a lockfile resolved today floats twenty of them past the pinned core — the mismatch `pnpm peers check` reports. An `overrides:` block pins them back to 3.27.3. Bump the overrides and the eleven manifest ranges **together**; nothing in the suite renders the editor, so a split tree would not surface until runtime.
+
+Tests here are **vitest**, not `node:test` — the only member that is. All three suites are pure-function or CSS-source-text assertions and render no components, so root `pnpm run test` stays hermetic. `vite.config.ts` exists only to configure vitest; it builds nothing. It sets `css: true` because vitest otherwise stubs CSS modules to an empty string, which would also empty the `?raw` imports `themeTokens.test.ts` reads the stylesheets through.
+
 ## Conventions and constraints
 
-- **Two source-resolution styles coexist, and mixing them breaks things.** `run` and `naser` use tsconfig path aliases and extensionless relative imports, resolved by tsdown at build time and `test/register.ts` under `node --test`. `http`, `restclients` and `funtest` instead import with explicit `.ts` specifiers and rely on `allowImportingTsExtensions` + `rewriteRelativeImportExtensions`; rewriting one of those specifiers to `.js` breaks running the sources directly.
+- **Three source-resolution styles coexist, and mixing them breaks things.** `run`, `naser` and the nine migrated packages use tsconfig path aliases, resolved by tsdown at build time and `test/register.ts` under `node --test`; `run`/`naser` import relatives extensionless, the migrated nine name the emitted `.js` sibling, and their `register.ts` handles both. `http`, `restclients` and `funtest` instead import with explicit `.ts` specifiers and rely on `allowImportingTsExtensions` + `rewriteRelativeImportExtensions`; rewriting one of those specifiers to `.js` breaks running the sources directly. `svelte-admin-kit` is the third: plain extensionless relative imports with no path aliases, resolved by `svelte-package` at build time and by vite under vitest. It needs no `register.ts` and must not grow one.
 - **The PTY is prebuilt, never compiled.** `@lydell/node-pty` ships per-platform N-API binaries as optional dependencies and declares no install scripts, so there is no node-gyp and no gcc/python requirement. Do not switch back to upstream `node-pty`: its NAN binary is tied to a `NODE_MODULE_VERSION` and breaks on every Node major upgrade.
 - **Leave `nodeProtocol` alone.** tsdown keeps `node:` specifiers as written, which is what these packages need — stripping the prefix turns `node:sqlite` into `sqlite`, a package that does not exist, and the built CLI dies at startup with `ERR_MODULE_NOT_FOUND`. (tsup did strip it by default, hence the `removeNodeProtocol: false` that used to be in every config.) Always smoke-test a built bin (`node dist/cli/run.js --version`) after touching the build config.
 - **Code splitting is unconditional.** tsdown has no `splitting: false`, so any module reachable from two entries lands in a shared chunk instead of being inlined into both. Nothing may assume "this file is the entry that imported me" — see `http`'s `link.ts` above for what that costs when violated.
 - **`outExtensions` is pinned to `.js`/`.d.ts` in every config.** tsdown defaults to `.mjs`/`.d.mts`; every `bin`, `main`, `types` and `exports` entry in this repo names the plain extensions.
 - **Path aliases** (tsconfig `paths`, resolved by tsdown at bundle time and by `test/register.ts` under `node --test`): `@/*` → `src/*`, `$/*` → package root. The `$/package.json` JSON import is how `run --version` gets its number.
 - **Bin shebangs** are `#!/usr/bin/env -S node --no-warnings` — the flag suppresses the `node:sqlite` experimental warning; keep it on new bins. It must be `/usr/bin/env`, not `/bin/env`: the latter does not exist on macOS or on distros without the `/usr` merge, and `publint` fails the build over it.
-- **`publint` and `attw` run as part of `build`,** so a packaging mistake fails before `prepack` can publish it. `attw` uses `profile: "esm-only"` because nothing here ships CJS; `funtest` runs `publint` only, since its sole `attw` finding is "package has no types", which is the design.
-- **`engines.node` varies per package and CI runs the highest floor.** `run`/`naser` say `>=22.5` (`node:sqlite`), `restclients` `>=20`, `funtest` `>=22.18`, `http` `>=26`. CI is pinned to **26** because that is the only version that satisfies all of them. Linux is the tested platform. Those floors are for consumers; *building* additionally needs what tsdown itself requires, `^22.18 || >=24.11`.
-- **TypeScript and `@types/node` versions differ per package** — `^5.7.3`/`^22.x` in `run`/`naser`, `^7.x`/`^26.x` in the three newer ones. pnpm's isolated layout gives each its own copy; do not try to unify them.
+- **`publint` and `attw` run as part of `build`,** so a packaging mistake fails before `prepack` can publish it. `attw` uses `profile: "esm-only"` because nothing here ships CJS. Two packages run `publint` only: `funtest`, whose sole `attw` finding is "package has no types" (the design), and `svelte-admin-kit`, whose public surface is `.svelte` files that attw has no verdict on.
+- **`engines.node` varies per package and CI runs the highest floor.** `run`/`naser` and the nine migrated packages say `>=22.5`, `restclients` `>=20`, `funtest` `>=22.18`, `svelte-admin-kit` `>=22.12` (vite 8), `http` `>=26`. CI is pinned to **26** because that is the only version that satisfies all of them; nothing in the migration raised that floor. Linux is the tested platform, and `packages/fs` makes that stricter than a preference — `posix` compiles at install time and `@npcz/magic`, `passwd-user` and `posix` are all POSIX-only. Those floors are for consumers; *building* additionally needs what tsdown itself requires, `^22.18 || >=24.11`.
+- **TypeScript versions differ per package, and three majors are live** — `^5.7.3` in `run`/`naser`, `^6.0.3` in `svelte-admin-kit`, `^7.x` in `http`/`restclients`/`funtest`; `@types/node` follows at `^22.x`/`^26.x`. pnpm's isolated layout gives each its own copy; do not try to unify them. The one place this leaks is a dependency that imports `typescript` without declaring it — see the `packageExtensions` note in the `svelte-admin-kit` section.
 - **Never use `workspace:*`.** `release.ts` refuses it outright; internal ranges must be plain semver so `bump.ts` can keep them in step.
-- ESM throughout (`"type": "module"`), strict TypeScript, 4-space indent, Prettier configured to defer to `.editorconfig`.
+- ESM throughout (`"type": "module"`), strict TypeScript, 4-space indent, Prettier configured to defer to `.editorconfig`. **`svelte-admin-kit` is exempt**: it keeps the upstream Svelte house style (tabs, single quotes, `printWidth: 100`, `prettier-plugin-svelte`) in its own `.prettierrc`, and deliberately has no `.editorconfig`. Reformatting 6.3k lines of ported components to match would produce a diff nobody can review; leave it alone and let `pnpm --filter @aibulat/svelte-admin-kit run lint` be the arbiter.

@@ -1,0 +1,63 @@
+{
+  "name": "@aibulat/sendeml",
+  "version": "0.0.6",
+  "description": "Send raw eml files to SMTP server specified via env vars or .env file",
+  "type": "module",
+  "bin": {
+    "sendeml": "dist/index.js"
+  },
+  "scripts": {
+    "test": "node --import ./test/register.ts --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "SMTP",
+    "Email",
+    "eml"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/sendeml"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/sendeml#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/mailparser": "^3.4.0",
+    "@types/node": "^22.13.1",
+    "@types/nodemailer": "^6.4.7",
+    "@types/smtp-server": "^3.5.7",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@aibulat/isfile": "^0.0.4",
+    "@colors/colors": "^1.5.0",
+    "@faker-js/faker": "^7.6.0",
+    "cli-table3": "^0.6.3",
+    "commander": "^10.0.0",
+    "dotenv": "^16.0.3",
+    "emailjs": "^4.0.1",
+    "mailparser": "^3.6.3",
+    "nodemailer": "^6.9.1",
+    "smtp-server": "^3.11.0",
+    "winston": "^3.8.2"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

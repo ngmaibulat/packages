@@ -1,0 +1,54 @@
+{
+  "name": "@aibulat/installer",
+  "version": "0.0.14",
+  "description": "Package to perform various installation automations",
+  "type": "module",
+  "bin": {
+    "i-ubuntu-mysql": "dist/ubuntu-mysql.js",
+    "i-ubuntu-vim": "dist/ubuntu-vim.js",
+    "c-vim": "dist/c-vim.js",
+    "gen-pw": "dist/gen-pw.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "install",
+    "mysql",
+    "ubuntu",
+    "zx",
+    "automate"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/installer"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/installer#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "zx": "^7.1.1"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

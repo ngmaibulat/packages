@@ -1,0 +1,13 @@
+{
+    "name": "wdc",
+    "streams": [
+        {
+            "level": "debug",
+            "path": "./log/debug.json"
+        },
+        {
+            "level": "info",
+            "path": "./log/logs.json"
+        }
+    ]
+}

@@ -1,0 +1,9 @@
+{
+    "name": "wdc",
+    "streams": [
+        {
+            "level": "info",
+            "path": "./log/logs.json"
+        }
+    ]
+}

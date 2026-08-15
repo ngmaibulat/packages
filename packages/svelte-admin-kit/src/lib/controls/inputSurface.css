@@ -1,0 +1,93 @@
+/*
+ * The shared box of every text-entry control: TextInput, Textarea and Select.
+ *
+ * This is a plain (global) stylesheet rather than three copies of the same
+ * rules in three components' scoped <style> blocks — the whole point of this
+ * package is that a control's appearance is defined once. It follows the same
+ * pattern `richtext.css` already established: imported by the components that
+ * need it, so it ships only when one of them is loaded, and deduplicated by
+ * the bundler when several are.
+ *
+ * `.sak-input` deliberately does NOT set width or margin. The class it
+ * replaces baked in `width: 100%` and `margin-top`, which is why the app it
+ * came from had to override them at every narrow field (`form-input w-32`) —
+ * layout belongs to the call site, not the control.
+ */
+.sak-input {
+	appearance: none;
+	display: block;
+	box-sizing: border-box;
+	/* The same value Button's `md` size uses. A field and the button beside it
+	   used to derive their heights independently — one from padding plus font
+	   metrics, the other from padding plus different font metrics — and landed
+	   about two pixels apart. Pinning both to one token makes the alignment a
+	   property of the system rather than a coincidence. `min-height` rather than
+	   `height` so a textarea can still grow. */
+	min-height: var(--sak-height-md, 2.375rem);
+	border: 1px solid var(--sak-input-border, #cbd5e1);
+	border-radius: var(--sak-radius-md, 0.75rem);
+	background: var(--sak-input-bg, #ffffff);
+	padding: var(--sak-pad-y-md, 0.5rem) var(--sak-pad-x-sm, 0.75rem);
+	font-family: inherit;
+	font-size: var(--sak-font-size-md, 0.875rem);
+	line-height: 1.4;
+	color: var(--sak-input-text, #020617);
+	transition:
+		border-color 120ms ease,
+		background-color 120ms ease;
+}
+
+.sak-input::placeholder {
+	color: var(--sak-input-placeholder, #94a3b8);
+	opacity: 1; /* Firefox dims placeholders by default. */
+}
+
+.sak-input:focus-visible {
+	outline: var(--sak-focus-ring-width, 2px) solid var(--sak-focus-ring, #94a3b8);
+	outline-offset: 1px;
+}
+
+/* A disabled control must LOOK unavailable, not merely be unavailable — the
+   class this replaces had no :disabled rule at all, so a greyed-out form was
+   indistinguishable from an editable one. */
+.sak-input:disabled {
+	background: var(--sak-input-bg-disabled, #f1f5f9);
+	color: var(--sak-text-subtle, #64748b);
+	cursor: not-allowed;
+}
+
+.sak-input[aria-invalid='true'] {
+	border-color: var(--sak-input-border-invalid, #dc2626);
+}
+
+.sak-input-textarea {
+	min-height: 5.5rem;
+	resize: vertical;
+}
+
+/* The select gets its own chevron: `appearance: none` above removes the
+   platform one, and without a replacement a select is indistinguishable from a
+   text input — which is exactly how the app rendered all 108 of them. */
+.sak-input-select {
+	padding-right: 2rem;
+	background-image:
+		linear-gradient(45deg, transparent 50%, currentColor 50%),
+		linear-gradient(135deg, currentColor 50%, transparent 50%);
+	background-position:
+		calc(100% - 1.05rem) calc(50% + 0.1rem),
+		calc(100% - 0.7rem) calc(50% + 0.1rem);
+	background-size:
+		0.35rem 0.35rem,
+		0.35rem 0.35rem;
+	background-repeat: no-repeat;
+}
+
+.sak-input-select:disabled {
+	color: var(--sak-text-subtle, #64748b);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sak-input {
+		transition: none;
+	}
+}

@@ -1,0 +1,143 @@
+/*
+ * Rendered rich-text CONTENT styles (.rt-* classes emitted by the shared
+ * extension kit's renderHTML — callouts, tables, task lists, details,
+ * images). Import this globally in the consuming app: rendered read-only
+ * HTML (@siem/core renderRichTextSafe output via {@html}) appears on pages
+ * where the editor bundle is never loaded, so these rules can't live inside
+ * the editor component. The editor's own content area reuses the exact same
+ * classes, so authoring and reading look identical.
+ *
+ * Dark mode: keyed off the consuming app's `[data-theme='dark']` root
+ * attribute AND the editor wrapper's own .rt-dark class (for embedders
+ * without a data-theme convention).
+ */
+
+/* --- callouts ---------------------------------------------------------- */
+.rt-callout {
+	border-left: 3px solid;
+	border-radius: 0.375rem;
+	padding: 0.5rem 0.75rem;
+	margin: 0.5rem 0;
+}
+.rt-callout > :first-child {
+	margin-top: 0;
+}
+.rt-callout > :last-child {
+	margin-bottom: 0;
+}
+.rt-callout-info {
+	border-color: #3b82f6;
+	background: #eff6ff;
+}
+.rt-callout-warning {
+	border-color: #f59e0b;
+	background: #fffbeb;
+}
+.rt-callout-success {
+	border-color: #22c55e;
+	background: #f0fdf4;
+}
+.rt-callout-danger {
+	border-color: #ef4444;
+	background: #fef2f2;
+}
+[data-theme='dark'] .rt-callout-info,
+.rt-dark .rt-callout-info {
+	background: rgba(59, 130, 246, 0.12);
+}
+[data-theme='dark'] .rt-callout-warning,
+.rt-dark .rt-callout-warning {
+	background: rgba(245, 158, 11, 0.12);
+}
+[data-theme='dark'] .rt-callout-success,
+.rt-dark .rt-callout-success {
+	background: rgba(34, 197, 94, 0.12);
+}
+[data-theme='dark'] .rt-callout-danger,
+.rt-dark .rt-callout-danger {
+	background: rgba(239, 68, 68, 0.12);
+}
+
+/* --- tables (scoped to rich content wrappers so app tables are untouched) */
+.md-preview table,
+.rt-content table {
+	border-collapse: collapse;
+	margin: 0.5rem 0;
+	width: auto;
+	max-width: 100%;
+	overflow-x: auto;
+	display: block;
+}
+.md-preview table tr,
+.rt-content table tr {
+	border-bottom: 1px solid rgba(100, 116, 139, 0.3);
+}
+.md-preview table th,
+.md-preview table td,
+.rt-content table th,
+.rt-content table td {
+	border: 1px solid rgba(100, 116, 139, 0.3);
+	padding: 0.25rem 0.6rem;
+	text-align: left;
+	vertical-align: top;
+	min-width: 3rem;
+}
+.md-preview table th,
+.rt-content table th {
+	background: rgba(100, 116, 139, 0.08);
+	font-weight: 600;
+}
+
+/* --- task lists -------------------------------------------------------- */
+ul[data-type='taskList'] {
+	list-style: none;
+	padding-left: 0.25rem;
+}
+ul[data-type='taskList'] li {
+	display: flex;
+	gap: 0.5rem;
+	align-items: flex-start;
+}
+ul[data-type='taskList'] li > label {
+	margin-top: 0.2rem;
+	user-select: none;
+}
+ul[data-type='taskList'] li > div {
+	flex: 1;
+}
+ul[data-type='taskList'] li > div > p {
+	margin: 0.15rem 0;
+}
+ul[data-type='taskList'] li[data-checked='true'] > div {
+	text-decoration: line-through;
+	opacity: 0.65;
+}
+
+/* --- details (expand/collapse) ----------------------------------------- */
+.md-preview details,
+.rt-content details,
+[data-type='details'] {
+	border: 1px solid rgba(100, 116, 139, 0.3);
+	border-radius: 0.375rem;
+	padding: 0.4rem 0.75rem;
+	margin: 0.5rem 0;
+}
+.md-preview details summary,
+.rt-content summary,
+[data-type='details'] summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+/* --- images ------------------------------------------------------------ */
+.md-preview img,
+.rt-content img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 0.25rem;
+}
+
+/* --- mention/emoji atoms ----------------------------------------------- */
+span[data-type='emoji'] {
+	line-height: 1;
+}

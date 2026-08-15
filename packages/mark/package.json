@@ -1,0 +1,64 @@
+{
+  "name": "@aibulat/mark",
+  "version": "0.0.2",
+  "description": "Markdown CLI render",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "mark": "dist/index.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "Markdown",
+    "Render",
+    "CLI"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/mark"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/mark#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
+    "@types/marked": "^4.0.8",
+    "@types/marked-terminal": "^3.1.3",
+    "@types/node": "^22.13.1",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@aibulat/isfile": "^0.0.4",
+    "commander": "^10.0.0",
+    "marked": "^4.2.12",
+    "marked-terminal": "^5.1.1"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

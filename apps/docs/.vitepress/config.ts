@@ -10,15 +10,33 @@ export default defineConfig({
     cleanUrls: true,
 
     themeConfig: {
+        // Grouped rather than flat: there are fifteen packages, and a nav bar
+        // with fifteen top-level entries wraps and stops being scannable.
         nav: [
-            { text: "run", link: "/run/", activeMatch: "/run/" },
-            { text: "http", link: "/http/", activeMatch: "/http/" },
             {
-                text: "restclients",
-                link: "/restclients/",
-                activeMatch: "/restclients/",
+                text: "CLI tools",
+                items: [
+                    { text: "run", link: "/run/" },
+                    { text: "http", link: "/http/" },
+                    { text: "mark", link: "/mark/" },
+                    { text: "naser", link: "/naser/" },
+                    { text: "fs", link: "/fs/" },
+                    { text: "sendeml", link: "/sendeml/" },
+                    { text: "watch-dir-count", link: "/watch-dir-count/" },
+                    { text: "auth", link: "/auth/" },
+                    { text: "installer", link: "/installer/" },
+                    { text: "ctl-ufw", link: "/ctl-ufw/" },
+                ],
             },
-            { text: "naser", link: "/naser/", activeMatch: "/naser/" },
+            {
+                text: "Libraries",
+                items: [
+                    { text: "restclients", link: "/restclients/" },
+                    { text: "isfile", link: "/isfile/" },
+                    { text: "json", link: "/json/" },
+                    { text: "svelte-admin-kit", link: "/svelte-admin-kit/" },
+                ],
+            },
             { text: "funtest", link: "/funtest/", activeMatch: "/funtest/" },
             { text: "Notes", link: "/notes/cli", activeMatch: "/notes/" },
         ],
@@ -76,6 +94,66 @@ export default defineConfig({
                 {
                     text: "@aibulat/funtest",
                     items: [{ text: "Overview", link: "/funtest/" }],
+                },
+            ],
+            "/svelte-admin-kit/": [
+                {
+                    text: "@aibulat/svelte-admin-kit",
+                    items: [{ text: "Overview", link: "/svelte-admin-kit/" }],
+                },
+            ],
+            "/isfile/": [
+                {
+                    text: "@aibulat/isfile",
+                    items: [{ text: "Overview", link: "/isfile/" }],
+                },
+            ],
+            "/json/": [
+                {
+                    text: "@aibulat/json",
+                    items: [{ text: "Overview", link: "/json/" }],
+                },
+            ],
+            "/fs/": [
+                {
+                    text: "@aibulat/fs",
+                    items: [{ text: "Overview", link: "/fs/" }],
+                },
+            ],
+            "/mark/": [
+                {
+                    text: "@aibulat/mark",
+                    items: [{ text: "Overview", link: "/mark/" }],
+                },
+            ],
+            "/auth/": [
+                {
+                    text: "@aibulat/auth",
+                    items: [{ text: "Overview", link: "/auth/" }],
+                },
+            ],
+            "/installer/": [
+                {
+                    text: "@aibulat/installer",
+                    items: [{ text: "Overview", link: "/installer/" }],
+                },
+            ],
+            "/ctl-ufw/": [
+                {
+                    text: "@aibulat/ctl-ufw",
+                    items: [{ text: "Overview", link: "/ctl-ufw/" }],
+                },
+            ],
+            "/sendeml/": [
+                {
+                    text: "@aibulat/sendeml",
+                    items: [{ text: "Overview", link: "/sendeml/" }],
+                },
+            ],
+            "/watch-dir-count/": [
+                {
+                    text: "@aibulat/watch-dir-count",
+                    items: [{ text: "Overview", link: "/watch-dir-count/" }],
                 },
             ],
             "/notes/": [

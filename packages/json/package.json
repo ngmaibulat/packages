@@ -1,0 +1,56 @@
+{
+  "name": "@aibulat/json",
+  "version": "0.0.7",
+  "description": "Read a JSON file into a typed value",
+  "type": "module",
+  "main": "./dist/readJson.js",
+  "types": "./dist/readJson.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/readJson.d.ts",
+      "default": "./dist/readJson.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "json",
+    "read json",
+    "generics"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/json"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/json#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
+    "@types/node": "^22.13.1",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@aibulat/isfile": "^0.0.4"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

@@ -101,6 +101,10 @@ dist
 .vitepress/dist
 .vitepress/cache
 
+# svelte-package staging directory (packages/svelte-admin-kit builds through it
+# before copying to dist/)
+.svelte-kit
+
 # vuepress build output
 .vuepress/dist
 

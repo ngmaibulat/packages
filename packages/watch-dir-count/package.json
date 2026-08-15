@@ -1,0 +1,72 @@
+{
+  "name": "@aibulat/watch-dir-count",
+  "version": "0.0.4",
+  "description": "watch count of files in a directory",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "wdc": "dist/index.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "watch",
+    "directory",
+    "count",
+    "monitor",
+    "queue"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/watch-dir-count"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/watch-dir-count#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
+    "@types/bunyan": "^1.8.8",
+    "@types/ejs": "^3.1.2",
+    "@types/node": "^22.13.1",
+    "@types/nodemailer": "^6.4.7",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@aibulat/fs": "^0.0.7",
+    "@aibulat/json": "^0.0.7",
+    "@colors/colors": "^1.5.0",
+    "bunyan": "^1.8.15",
+    "dotenv": "^16.0.3",
+    "ejs": "^3.1.9",
+    "handlebars": "^4.7.7",
+    "nodemailer": "^6.9.1"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

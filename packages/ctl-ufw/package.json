@@ -1,0 +1,53 @@
+{
+  "name": "@aibulat/ctl-ufw",
+  "version": "0.0.3",
+  "description": "Manage UFW rules",
+  "type": "module",
+  "bin": {
+    "ctl-ufw": "dist/ufw.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "Ubuntu",
+    "Firewall",
+    "UFW",
+    "TCP",
+    "UDP",
+    "Network",
+    "Port"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/ctl-ufw"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/ctl-ufw#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "zx": "^7.1.1"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "name": "@aibulat/auth",
+  "version": "0.0.7",
+  "description": "CLI tool: check username password via sql database table",
+  "type": "module",
+  "bin": {
+    "auth": "dist/auth.js",
+    "bcrypt": "dist/bcrypt.js",
+    "bcrypt-compare": "dist/bcrypt-compare.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "auth",
+    "bcrypt",
+    "password",
+    "cli",
+    "mysql"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/auth"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/auth#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.2",
+    "@types/node": "^22.13.1",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.0.3",
+    "knex": "^2.3.0",
+    "mysql2": "^2.3.3"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

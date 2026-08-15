@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Email Report Template</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+            body {
+                font-family: 'Roboto', sans-serif;
+                font-size: 16px;
+                line-height: 1.5;
+            }
+        </style>
+        <style>
+            @import 'tailwindcss/base';
+            @import 'tailwindcss/components';
+            @import 'tailwindcss/utilities';
+        </style>
+    </head>
+    <body class="bg-gray-100">
+        <div class="container mx-auto py-8">
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-bold mb-4">Directory Report</h2>
+                <table class="table-auto">
+                    <tbody>
+                        <tr>
+                            <td class="border px-4 py-2 font-medium">
+                                Directory Name
+                            </td>
+                            <td class="border px-4 py-2">
+                                {{ directoryName }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="border px-4 py-2 font-medium">
+                                Number of Files
+                            </td>
+                            <td class="border px-4 py-2">
+                                {{ numberOfFiles }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </body>
+</html>

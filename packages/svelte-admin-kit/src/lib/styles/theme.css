@@ -1,0 +1,217 @@
+/*
+ * Optional theme tokens for @aibulat/svelte-admin-kit. Every component falls
+ * back to sensible literal defaults even if this file is never imported —
+ * importing it (or defining the same custom properties yourself) is only
+ * needed to customize the defaults.
+ *
+ * All tokens are prefixed `--sak-` so they never collide with a consuming
+ * app's own custom properties.
+ *
+ * The literal values below are the kit's OWN defaults, deliberately neutral
+ * (a slate-ish greyscale plus one blue accent). A consuming app is expected to
+ * re-point them at its own design tokens rather than edit this file — see the
+ * README's Theming section.
+ *
+ * `themeTokens.test.ts` asserts this file lists exactly the tokens the
+ * components read, in both directions. It exists because this file had quietly
+ * fallen a dozen tokens behind: the app that consumes the kit re-points them in
+ * its own stylesheet and never imports this one, so the only party a gap could
+ * affect was a third-party consumer — nobody who would report it.
+ */
+:root {
+	--sak-icon-size: 1rem;
+	--sak-icon-stroke-width: 2;
+
+	/* Shape and rhythm. Controls share one radius scale so a button sitting
+	   next to an input lines up without per-call-site correction. */
+	--sak-radius-sm: 0.5rem;
+	--sak-radius-md: 0.75rem;
+	--sak-radius-lg: 1rem;
+	--sak-radius-pill: 9999px;
+
+	--sak-font-size-xs: 0.75rem;
+	--sak-font-size-sm: 0.8125rem;
+	--sak-font-size-md: 0.875rem;
+	--sak-font-size-lg: 1rem;
+	--sak-font-size-display: 1.875rem;
+
+	--sak-pad-x-xs: 0.5rem;
+	--sak-pad-y-sm: 0.375rem;
+	--sak-pad-x-sm: 0.75rem;
+	--sak-pad-y-md: 0.5rem;
+	--sak-pad-x-md: 1rem;
+	--sak-pad-x-lg: 1.25rem;
+
+	/* A button and the text field beside it share a height, so a filter row
+	   lines up without per-call-site correction. */
+	--sak-height-xs: 1.75rem;
+	--sak-height-sm: 2rem;
+	--sak-height-md: 2.375rem;
+	--sak-height-lg: 2.75rem;
+
+	--sak-gap: 0.5rem;
+
+	/* Surfaces */
+	--sak-surface: #ffffff;
+	--sak-surface-strong: #f1f5f9;
+	--sak-foreground: #020617;
+	--sak-text-muted: #475569;
+	--sak-text-subtle: #64748b;
+	--sak-border: #e2e8f0;
+	--sak-border-strong: #cbd5e1;
+	--sak-card-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+	/* Transparent by default: a shadow is what separates a card from a light
+	   page, but on a dark one the shadow does nothing and the edge has to be
+	   drawn. An app with a dark theme points this at its border token. */
+	--sak-card-border: transparent;
+	--sak-btn-shadow: 0 1px 2px rgb(15 23 42 / 0.1);
+
+	/* Focus is a real, visible ring on every control — the app this kit was
+	   extracted from had one only on text inputs, and none at all on buttons. */
+	--sak-focus-ring: #94a3b8;
+	--sak-focus-ring-width: 2px;
+	--sak-focus-ring-offset: 2px;
+	--sak-disabled-opacity: 0.55;
+	--sak-disabled-bg: #e2e8f0;
+	--sak-disabled-text: #94a3b8;
+
+	/* Variants */
+	--sak-primary-bg: #0f172a;
+	--sak-primary-bg-hover: #1e293b;
+	--sak-primary-text: #ffffff;
+
+	--sak-neutral-bg: #0f172a;
+	--sak-neutral-bg-hover: #1e293b;
+	--sak-neutral-text: #ffffff;
+
+	--sak-success-bg: #15803d;
+	--sak-success-bg-hover: #166534;
+	--sak-success-text: #ffffff;
+
+	--sak-warning-bg: #b45309;
+	--sak-warning-bg-hover: #92400e;
+	--sak-warning-text: #ffffff;
+
+	--sak-secondary-bg: #ffffff;
+	--sak-secondary-bg-hover: #f1f5f9;
+	--sak-secondary-text: #0f172a;
+	--sak-secondary-border: #cbd5e1;
+
+	--sak-danger-bg-hover: #fef2f2;
+	--sak-danger-text: #b91c1c;
+	--sak-danger-text-hover: #991b1b;
+	--sak-danger-border: #fecaca;
+	/* Ink for a danger button that is filled rather than bare. */
+	--sak-danger-on-color: #ffffff;
+
+	--sak-ghost-bg: transparent;
+	--sak-ghost-bg-hover: rgba(15, 23, 42, 0.06);
+	--sak-ghost-text: #0f172a;
+
+	--sak-link-text: #2563eb;
+	--sak-link-text-hover: #1d4ed8;
+
+	/* Inputs */
+	--sak-input-bg: #ffffff;
+	--sak-input-bg-disabled: #f1f5f9;
+	--sak-input-text: #020617;
+	--sak-input-placeholder: #94a3b8;
+	--sak-input-border: #cbd5e1;
+	--sak-input-border-invalid: #dc2626;
+
+	--sak-invalid-text: #b91c1c;
+
+	/* Selected / designated state — the ButtonGroup's pressed segment and the
+	   ColumnListEditor's index-column row. */
+	--sak-selected-bg: #dbeafe;
+	--sak-selected-text: #1e40af;
+
+	/* Rich-text toolbar tones. Seven hues, one per kind of thing a toolbar button
+	   makes, carried by the icon in every state; the pressed pill tints itself
+	   from whichever of these is in force, so there is no separate "on" colour to
+	   theme. Each has a `-dark` twin because the editor's dark surface is much
+	   darker than a normal card and the light hues go muddy on it — the toolbar
+	   swaps the whole set at once under `.rt-dark`. */
+	--sak-rt-tone-mark: #2563eb;
+	--sak-rt-tone-heading: #7c3aed;
+	--sak-rt-tone-list: #059669;
+	--sak-rt-tone-code: #b45309;
+	--sak-rt-tone-block: #0891b2;
+	--sak-rt-tone-insert: #c026d3;
+	--sak-rt-tone-history: #64748b;
+	--sak-rt-tone-mark-dark: #60a5fa;
+	--sak-rt-tone-heading-dark: #a78bfa;
+	--sak-rt-tone-list-dark: #34d399;
+	--sak-rt-tone-code-dark: #fbbf24;
+	--sak-rt-tone-block-dark: #22d3ee;
+	--sak-rt-tone-insert-dark: #e879f9;
+	--sak-rt-tone-history-dark: #94a3b8;
+
+	/* Dropzone */
+	--sak-dropzone-border: #cbd5e1;
+	--sak-dropzone-border-active: #2563eb;
+	--sak-dropzone-bg: #f8fafc;
+	--sak-dropzone-bg-active: #eff6ff;
+
+	/* Alert. Four tones, each a fill/edge/ink triple — an app that already has
+	   message colours points these at them rather than inventing new ones. */
+	--sak-alert-radius: 0.75rem;
+	--sak-alert-error-bg: #fef2f2;
+	--sak-alert-error-border: #fecaca;
+	--sak-alert-error-text: #991b1b;
+	--sak-alert-success-bg: #f0fdf4;
+	--sak-alert-success-border: #bbf7d0;
+	--sak-alert-success-text: #166534;
+	--sak-alert-warning-bg: #fffbeb;
+	--sak-alert-warning-border: #fde68a;
+	--sak-alert-warning-text: #92400e;
+	--sak-alert-info-bg: #eff6ff;
+	--sak-alert-info-border: #bfdbfe;
+	--sak-alert-info-text: #1e40af;
+
+	/* Empty state */
+	--sak-empty-border: #cbd5e1;
+	--sak-empty-bg: #f8fafc;
+	--sak-empty-text: #64748b;
+
+	/* Table */
+	--sak-table-border: #e2e8f0;
+	--sak-table-head-text: #64748b;
+	--sak-table-row-hover: #f8fafc;
+	--sak-table-pad-x: 0.75rem;
+	--sak-table-pad-y: 0.5rem;
+
+	/* Badge tones */
+	--sak-badge-neutral-bg: #f1f5f9;
+	--sak-badge-neutral-text: #334155;
+	--sak-badge-muted-bg: transparent;
+	--sak-badge-muted-text: #64748b;
+	--sak-badge-muted-border: #cbd5e1;
+	--sak-badge-info-bg: #eff6ff;
+	--sak-badge-info-text: #1e40af;
+	--sak-badge-success-bg: #f0fdf4;
+	--sak-badge-success-text: #166534;
+	--sak-badge-warning-bg: #fffbeb;
+	--sak-badge-warning-text: #92400e;
+	--sak-badge-danger-bg: #fef2f2;
+	--sak-badge-danger-text: #991b1b;
+	--sak-badge-accent-bg: #eef2ff;
+	--sak-badge-accent-text: #3730a3;
+
+	/* Dialog */
+	--sak-dialog-bg: #ffffff;
+	--sak-dialog-text: #020617;
+	--sak-dialog-border: #e2e8f0;
+	--sak-dialog-bar-bg: #f8fafc;
+	--sak-dialog-backdrop: rgb(15 23 42 / 0.5);
+	--sak-dialog-shadow: 0 25px 50px -12px rgb(15 23 42 / 0.25);
+	--sak-dialog-title-size: 1.125rem;
+	--sak-dialog-pad-x: 1.5rem;
+	--sak-dialog-bar-pad-y: 1rem;
+	--sak-dialog-body-pad-y: 1.5rem;
+	--sak-dialog-width-sm: min(92vw, 28rem);
+	--sak-dialog-width-md: min(92vw, 36rem);
+	--sak-dialog-width-lg: min(92vw, 40rem);
+	/* How tall the surface may grow before its body starts scrolling. */
+	--sak-dialog-max-height: 90dvh;
+}
