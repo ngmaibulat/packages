@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, readlink, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -494,6 +494,55 @@ test('httpc link guard rails', async (t) => {
         });
         assert.equal(code, 0);
         assert.match(stderr, /head is not linked by httpc/);
+    });
+});
+
+test('httpc link finds its own bin directory', async (t) => {
+    // The refusals above never reach binSourceDir(), so they cannot tell whether it
+    // resolved anywhere real. This does: it links for real, into a throwaway directory
+    // put at the front of PATH so the shim lookup lands there instead of a system dir.
+    //
+    // Worth a round trip because binSourceDir() derives the answer from this module's
+    // own location, and the bundler decides what that is -- src/link.ts, an inlined
+    // copy inside dist/bin/<method>.js, or a shared chunk one directory over.
+    let shimDir: string;
+
+    t.before(async () => {
+        shimDir = await mkdtemp(path.join(tmpdir(), 'aibulat-http-link-'));
+
+        // resolveShimDir() looks for the `httpc` shim on PATH and only falls back to
+        // the directory holding the node binary. Without this marker the test would
+        // link into that real directory instead of the temporary one.
+        await writeFile(path.join(shimDir, 'httpc'), '');
+    });
+
+    t.after(async () => {
+        await rm(shimDir, { recursive: true, force: true });
+    });
+
+    await t.test('link creates a symlink pointing at a bin that exists', async () => {
+        const { code, stderr } = await runBin('httpc', ['link', 'head'], {
+            env: { PATH: shimDir },
+        });
+
+        assert.equal(code, 0, stderr);
+        assert.match(stderr, /^linked /);
+
+        const linkPath = path.join(shimDir, 'head');
+        const target = path.resolve(shimDir, await readlink(linkPath));
+
+        assert.equal(path.basename(path.dirname(target)), 'bin');
+        assert.ok(await stat(target).then(() => true), `${target} does not exist`);
+    });
+
+    await t.test('unlink removes it again', async () => {
+        const { code, stderr } = await runBin('httpc', ['unlink', 'head'], {
+            env: { PATH: shimDir },
+        });
+
+        assert.equal(code, 0, stderr);
+        assert.match(stderr, /^unlinked /);
+        await assert.rejects(() => lstat(path.join(shimDir, 'head')));
     });
 });
 

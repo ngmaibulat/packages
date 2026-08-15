@@ -1,4 +1,4 @@
-#!/bin/env -S node --no-warnings
+#!/usr/bin/env -S node --no-warnings
 
 import readline from "node:readline";
 import { runShell } from "@/shell/lib";

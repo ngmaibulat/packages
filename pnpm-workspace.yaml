@@ -3,9 +3,10 @@ packages:
   - "packages/*"
   - "examples/*"
 
-# esbuild (via tsup) links its prebuilt platform binary in a postinstall.
-# Nothing else here compiles anything: @lydell/node-pty ships prebuilt
-# binaries as optional per-platform deps and declares no install scripts.
+# esbuild (via vitepress -> vite) links its prebuilt platform binary in a
+# postinstall. Nothing else here compiles anything: both @lydell/node-pty and
+# rolldown (via tsdown) ship prebuilt binaries as optional per-platform deps and
+# declare no install scripts.
 allowBuilds:
   esbuild: true
 

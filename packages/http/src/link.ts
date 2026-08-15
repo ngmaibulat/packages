@@ -18,13 +18,28 @@ import { CliError, EXIT, type ExitCode } from './errors.ts';
  * its shims as symlinks and Node reports argv[1] unresolved, so argv[1] points at the
  * shim directory rather than into the package.
  */
-function binSourceDir(): string {
-    const here = path.dirname(fileURLToPath(import.meta.url));
+async function binSourceDir(): Promise<string> {
+    let dir = path.dirname(fileURLToPath(import.meta.url));
 
-    // Two layouts. From source this module is `src/link.ts` and the bins are one level
-    // down in `src/bin`. Once bundled it is inlined into every `dist/bin/<method>.js`,
-    // so `here` is already the bin directory and joining again would miss by a level.
-    return path.basename(here) === 'bin' ? here : path.join(here, 'bin');
+    // Three layouts, and the bundler chooses between the last two on its own. From
+    // source this module is `src/link.ts`, with the bins one level down in `src/bin`.
+    // Inlined into a bin it *is* `dist/bin`. Hoisted into a shared chunk it is a
+    // sibling, `dist/chunks`. Walking up until a `bin` directory turns up covers all
+    // three without baking in a depth -- the same reason version.ts walks up looking
+    // for package.json rather than hardcoding `../package.json`.
+    for (;;) {
+        if (path.basename(dir) === 'bin') return dir;
+
+        const candidate = path.join(dir, 'bin');
+        if (await exists(candidate)) return candidate;
+
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            throw new CliError(EXIT.ERROR, 'cannot locate the directory httpc keeps its bins in');
+        }
+
+        dir = parent;
+    }
 }
 
 /** `.js` when installed, `.ts` when running from source during development. */
@@ -56,7 +71,7 @@ async function resolveShimDir(): Promise<string> {
     const beside = path.dirname(process.execPath);
     if (await exists(beside)) return beside;
 
-    return binSourceDir();
+    return await binSourceDir();
 }
 
 async function whichDir(command: string, skipDir?: string): Promise<string | undefined> {
@@ -97,7 +112,7 @@ export async function runLink(
         }
     }
 
-    const sourceDir = binSourceDir();
+    const sourceDir = await binSourceDir();
     const shimDir = await resolveShimDir();
     const extension = binExtension();
 

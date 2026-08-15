@@ -1,4 +1,4 @@
-#!/bin/env -S node --no-warnings
+#!/usr/bin/env -S node --no-warnings
 
 import { existsSync, readFileSync } from "node:fs";
 import { DBLog } from "@/logging/dblog";

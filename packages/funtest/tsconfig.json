@@ -103,7 +103,7 @@
         "skipLibCheck": true /* Skip type checking all .d.ts files. */
     },
 
-    /* Without this, the default include pattern pulls tsup.config.ts into the
+    /* Without this, the default include pattern pulls tsdown.config.ts into the
        program, and it sits outside rootDir. */
     "include": ["src"],
     "exclude": ["node_modules", "dist"]

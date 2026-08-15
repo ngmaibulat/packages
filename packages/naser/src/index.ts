@@ -1,4 +1,4 @@
-#!/bin/env node
+#!/usr/bin/env node
 
 import isFile from "@aibulat/isfile";
 import { convertFile } from "./lib";

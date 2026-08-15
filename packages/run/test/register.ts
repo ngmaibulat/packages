@@ -1,7 +1,7 @@
 /**
  * Module resolution hook for the native node:test runner.
  *
- * The sources are written for the bundler (tsup), so they use two things
+ * The sources are written for the bundler (tsdown), so they use two things
  * bare Node cannot resolve on its own:
  *
  *   - the tsconfig path aliases `@/*` (-> src/*) and `$/*` (-> package root)
@@ -26,7 +26,7 @@ const aliases: [string, string][] = [
     ["$/", packageRoot],
 ];
 
-/** Resolve a path that may be missing its extension, mirroring tsup. */
+/** Resolve a path that may be missing its extension, mirroring tsdown. */
 function probe(basePath: string): string | undefined {
     const candidates = [
         basePath,

@@ -9,8 +9,8 @@
     "scripts": {
         "test:live": "./bin/run.sh",
         "typecheck": "tsc --noEmit",
-        "build": "tsup",
-        "dev": "tsup --watch",
+        "build": "tsdown",
+        "dev": "tsdown --watch",
         "prepack": "pnpm run build"
     },
     "files": [
@@ -41,7 +41,8 @@
     "license": "MIT",
     "devDependencies": {
         "@types/node": "^26.2.0",
-        "tsup": "^8.3.6",
+        "publint": "^0.3.23",
+        "tsdown": "^0.22.14",
         "typescript": "^7.0.2"
     },
     "engines": {

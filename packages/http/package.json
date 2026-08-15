@@ -27,9 +27,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "clean": "node scripts/clean.mjs",
-    "build": "pnpm run clean && tsc --emitDeclarationOnly && tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/*.test.ts\"",
     "test:dist": "pnpm run build && HTTP_BIN_DIR=dist/bin HTTP_BIN_EXT=.js node --test \"test/*.test.ts\"",
@@ -62,8 +61,10 @@
     "access": "public"
   },
   "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
     "@types/node": "^26.0.0",
-    "tsup": "^8.3.6",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.0"
   },
   "engines": {

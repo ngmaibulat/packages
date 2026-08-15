@@ -1,4 +1,4 @@
-#!/bin/env -S node --no-warnings
+#!/usr/bin/env -S node --no-warnings
 
 import { existsSync } from "node:fs";
 import { Command } from "commander";
