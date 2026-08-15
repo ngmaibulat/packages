@@ -524,8 +524,8 @@ importers:
         specifier: ^0.0.7
         version: 0.0.7
       '@aibulat/json':
-        specifier: ^0.0.7
-        version: 0.0.7
+        specifier: ^0.0.8
+        version: 0.0.8
       '@colors/colors':
         specifier: ^1.5.0
         version: 1.5.0
@@ -582,8 +582,8 @@ packages:
   '@aibulat/isfile@0.0.4':
     resolution: {integrity: sha512-ZIh4invOMFBtL0WdSdWBt4xKbBxAeuFKmJZqI/C0TXJA49O6n7HF0+W/6KfrCjY/bkLFKI4+v9cQau20G/0g7w==}
 
-  '@aibulat/json@0.0.7':
-    resolution: {integrity: sha512-kQXaVM/mDF7+yPPkE5Mxi/5HNjcfAwjNLRo+oAya4nRfx9La67jesIiHK3sy7dcvTa2/MeSfc94q+Y//IQRXhg==}
+  '@aibulat/json@0.0.8':
+    resolution: {integrity: sha512-056fDoJwouBfbf/uYUwtgNDwzP+8oLXaB8pmUa6j3oueAjVf1R+0NQ0kB+dJ5X/Z3I0lyqCUEBNrBzwmxvR/4g==}
 
   '@algolia/abtesting@1.22.0':
     resolution: {integrity: sha512-BFR6zNowNKcY7Ou7TaJc9QWexES4YKPbmf/OTFofpdsdhz4x6q0lbxp3duO0EHnyrN7rE4ba/TSXuY+BDGu4+g==}
@@ -4303,7 +4303,7 @@ snapshots:
 
   '@aibulat/isfile@0.0.4': {}
 
-  '@aibulat/json@0.0.7':
+  '@aibulat/json@0.0.8':
     dependencies:
       '@aibulat/isfile': 0.0.3
 

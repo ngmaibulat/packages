@@ -58,7 +58,7 @@
   },
   "dependencies": {
     "@aibulat/fs": "^0.0.7",
-    "@aibulat/json": "^0.0.7",
+    "@aibulat/json": "^0.0.8",
     "@colors/colors": "^1.5.0",
     "bunyan": "^1.8.15",
     "dotenv": "^16.0.3",

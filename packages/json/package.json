@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/json",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Read a JSON file into a typed value",
   "type": "module",
   "main": "./dist/readJson.js",
