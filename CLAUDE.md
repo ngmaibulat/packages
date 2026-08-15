@@ -264,5 +264,21 @@ Tests here are **vitest**, not `node:test` — the only member that is. All thre
 - **`publint` and `attw` run as part of `build`,** so a packaging mistake fails before `prepack` can publish it. `attw` uses `profile: "esm-only"` because nothing here ships CJS. Two packages run `publint` only: `funtest`, whose sole `attw` finding is "package has no types" (the design), and `svelte-admin-kit`, whose public surface is `.svelte` files that attw has no verdict on.
 - **`engines.node` varies per package and CI runs the highest floor.** `run`/`naser` and the nine migrated packages say `>=22.5`, `restclients` `>=20`, `funtest` `>=22.18`, `svelte-admin-kit` `>=22.12` (vite 8), `http` `>=26`. CI is pinned to **26** because that is the only version that satisfies all of them; nothing in the migration raised that floor. Linux is the tested platform, and `packages/fs` makes that stricter than a preference — `posix` compiles at install time and `@npcz/magic`, `passwd-user` and `posix` are all POSIX-only. Those floors are for consumers; *building* additionally needs what tsdown itself requires, `^22.18 || >=24.11`.
 - **TypeScript versions differ per package, and three majors are live** — `^5.7.3` in `run`/`naser`, `^6.0.3` in `svelte-admin-kit`, `^7.x` in `http`/`restclients`/`funtest`; `@types/node` follows at `^22.x`/`^26.x`. pnpm's isolated layout gives each its own copy; do not try to unify them. The one place this leaks is a dependency that imports `typescript` without declaring it — see the `packageExtensions` note in the `svelte-admin-kit` section.
-- **Never use `workspace:*`.** `release.ts` refuses it outright; internal ranges must be plain semver so `bump.ts` can keep them in step.
+- **Never use `workspace:*`.** `release.ts` refuses it outright; internal ranges must be plain semver so `bump.ts` can keep them in step. `saveWorkspaceProtocol: false` in `pnpm-workspace.yaml` stops `pnpm add` from rewriting an internal dependency to `workspace:^` behind your back.
+- **Build order: `build` before `typecheck`, always, on any tree without `dist/`.** Two settings interact to make this mandatory, and neither is visible from the error you get.
+
+  `linkWorkspacePackages: true` resolves an internal dependency to the sibling **package directory** rather than to its published tarball. The tarball ships `dist/` and the `.d.ts` beside it; the sibling directory does not, because `dist/` is gitignored. So on a fresh checkout `packages/json`'s `tsc --noEmit` looks for `@aibulat/isfile`'s types in `packages/isfile/dist`, finds nothing, and reports:
+
+  ```
+  src/readJson.ts(2,20): error TS2307:
+    Cannot find module '@aibulat/isfile' or its corresponding type declarations.
+  ```
+
+  That message names a module, not the missing build, and not the setting that redirected the lookup. It reads like a broken dependency.
+
+  `pnpm -r run build` is topological, so one root build fixes the whole graph: `isfile` before `json`/`fs`/`mark`/`naser`/`sendeml`, `fs` and `json` before `watch-dir-count`. Both places that gate on `typecheck` build first — `ci.yml`'s step order and `release.ts`'s verify loop (`['build', 'typecheck', 'test']`). **Do not reorder either one**, and do not "optimise" the build away because a previous step already produced `dist/`; CI starts from nothing every run.
+
+  It passes locally with stale `dist/` directories left over from an earlier build, so a local green typecheck proves nothing here. Reproduce CI with `rm -rf packages/*/dist packages/*/.svelte-kit` first.
+
+  The alternative — turning `linkWorkspacePackages` back off — is worse: it makes `pnpm bump` unable to update the lockfile whenever a package and its dependent move together, because the new range names a version that this release has not published yet.
 - ESM throughout (`"type": "module"`), strict TypeScript, 4-space indent, Prettier configured to defer to `.editorconfig`. **`svelte-admin-kit` is exempt**: it keeps the upstream Svelte house style (tabs, single quotes, `printWidth: 100`, `prettier-plugin-svelte`) in its own `.prettierrc`, and deliberately has no `.editorconfig`. Reformatting 6.3k lines of ported components to match would produce a diff nobody can review; leave it alone and let `pnpm --filter @aibulat/svelte-admin-kit run lint` be the arbiter.

@@ -71,9 +71,15 @@ jobs:
 
             - run: pnpm install --frozen-lockfile
 
-            # scripts/release.ts runs typecheck and test itself, and runs them
-            # after its dirty-worktree check. Verifying in a step of its own here
-            # risks leaving build output behind and making the release refuse.
+            # scripts/release.ts runs build, typecheck and test itself, and runs
+            # them after its dirty-worktree check. Verifying in a step of its own
+            # here would run before that check, and the ordering is what keeps the
+            # two from fighting - so leave the verification where it is.
+            #
+            # The build is part of that trio and is not optional: linkWorkspacePackages
+            # points internal dependencies at sibling directories, which have no dist/
+            # in a fresh checkout, and typecheck fails without one. See CLAUDE.md,
+            # "Build order".
             #
             # On a push there is no `inputs` context at all, so this resolves to
             # `release` - a dry run is only ever something you ask for by hand.
