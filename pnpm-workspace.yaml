@@ -3,6 +3,27 @@ packages:
   - "packages/*"
   - "examples/*"
 
+# pnpm 10 flipped this default to false, which breaks releasing a package and its
+# dependents together. The internal ranges here are plain semver (release.ts refuses
+# `workspace:`), and with linking off pnpm resolves them from the REGISTRY - so the
+# moment `pnpm bump` rewrites watch-dir-count's range to `@aibulat/fs@^0.0.8`, the
+# lockfile update fails with ERR_PNPM_NO_MATCHING_VERSION, because 0.0.8 does not
+# exist yet: this very release is what would publish it.
+#
+# With linking on, pnpm uses the local workspace copy whenever its version satisfies
+# the range, and never asks the registry about a version being released right now.
+# This is the pre-pnpm-10 behaviour the bump/release scripts were written against.
+#
+# Do NOT "fix" that failure by making bump.ts ignore the install exit code. The
+# manifests would then be committed and tagged alongside a stale lockfile, and CI
+# runs `pnpm install --frozen-lockfile`, which fails on exactly that mismatch - so
+# every ci.yml and publish.yml job would break on the release commit.
+linkWorkspacePackages: true
+
+# `pnpm add` would otherwise rewrite an internal dependency to `workspace:^`, which
+# release.ts refuses outright. Keep saved ranges plain semver.
+saveWorkspaceProtocol: false
+
 # esbuild (via vitepress -> vite) links its prebuilt platform binary in a
 # postinstall. @lydell/node-pty and rolldown (via tsdown) ship prebuilt binaries
 # as optional per-platform deps and declare no install scripts.
