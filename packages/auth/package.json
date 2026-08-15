@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/auth",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "CLI tool: check username password via sql database table",
   "type": "module",
   "bin": {

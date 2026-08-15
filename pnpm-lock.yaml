@@ -139,7 +139,7 @@ importers:
   packages/fs:
     dependencies:
       '@aibulat/isfile':
-        specifier: ^0.0.5
+        specifier: ^0.0.6
         version: link:../isfile
       '@colors/colors':
         specifier: ^1.5.0
@@ -252,7 +252,7 @@ importers:
   packages/json:
     dependencies:
       '@aibulat/isfile':
-        specifier: ^0.0.5
+        specifier: ^0.0.6
         version: link:../isfile
     devDependencies:
       '@arethetypeswrong/core':
@@ -274,7 +274,7 @@ importers:
   packages/mark:
     dependencies:
       '@aibulat/isfile':
-        specifier: ^0.0.5
+        specifier: ^0.0.6
         version: link:../isfile
       commander:
         specifier: ^10.0.0
@@ -339,7 +339,7 @@ importers:
   packages/naser:
     dependencies:
       '@aibulat/isfile':
-        specifier: ^0.0.5
+        specifier: ^0.0.6
         version: link:../isfile
       anser:
         specifier: ^2.3.0
@@ -425,7 +425,7 @@ importers:
   packages/sendeml:
     dependencies:
       '@aibulat/isfile':
-        specifier: ^0.0.5
+        specifier: ^0.0.6
         version: link:../isfile
       '@colors/colors':
         specifier: ^1.5.0
@@ -571,10 +571,10 @@ importers:
   packages/watch-dir-count:
     dependencies:
       '@aibulat/fs':
-        specifier: ^0.0.8
+        specifier: ^0.0.9
         version: link:../fs
       '@aibulat/json':
-        specifier: ^0.0.9
+        specifier: ^0.0.10
         version: link:../json
       '@colors/colors':
         specifier: ^1.5.0

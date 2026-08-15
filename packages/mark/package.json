@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/mark",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Markdown CLI render",
   "type": "module",
   "main": "./dist/index.js",
@@ -53,7 +53,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "@aibulat/isfile": "^0.0.5",
+    "@aibulat/isfile": "^0.0.6",
     "commander": "^10.0.0",
     "marked": "^4.2.12",
     "marked-terminal": "^5.1.1"

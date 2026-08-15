@@ -1,6 +1,6 @@
 {
   "name": "create-tsreact",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "description": "TS/React Scaffolder using esbuild compiler/bundler",
   "type": "module",
   "bin": {
