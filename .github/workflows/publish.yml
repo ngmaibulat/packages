@@ -58,9 +58,11 @@ jobs:
             # Deliberately no `registry-url:` - it writes an .npmrc containing
             # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}, and an empty
             # NODE_AUTH_TOKEN shadows the OIDC exchange with a blank credential.
+            # 26 to match ci.yml: release.ts runs typecheck and test itself, and
+            # packages/http needs >=26 for both.
             - uses: actions/setup-node@v4
               with:
-                  node-version: 24
+                  node-version: 26
                   cache: pnpm
 
             # Trusted publishing landed in npm 11.5.1; the bundled npm may be older.

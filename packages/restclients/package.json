@@ -1,0 +1,96 @@
+{
+    "name": "@aibulat/restclients",
+    "version": "5.0.0",
+    "description": "A set of REST API clients using Typescript and fetch",
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": null,
+        "./package.json": "./package.json",
+        "./core": {
+            "types": "./dist/core/index.d.ts",
+            "import": "./dist/core/index.js"
+        },
+        "./jsonplaceholder": {
+            "types": "./dist/jsonplaceholder/index.d.ts",
+            "import": "./dist/jsonplaceholder/index.js"
+        },
+        "./reqres": {
+            "types": "./dist/reqres/index.d.ts",
+            "import": "./dist/reqres/index.js"
+        },
+        "./dummyjson": {
+            "types": "./dist/dummyjson/index.d.ts",
+            "import": "./dist/dummyjson/index.js"
+        },
+        "./httpbin": {
+            "types": "./dist/httpbin/index.d.ts",
+            "import": "./dist/httpbin/index.js"
+        },
+        "./github": {
+            "types": "./dist/github/index.d.ts",
+            "import": "./dist/github/index.js"
+        },
+        "./ipinfo": {
+            "types": "./dist/ipinfo/index.d.ts",
+            "import": "./dist/ipinfo/index.js"
+        },
+        "./openmeteo": {
+            "types": "./dist/openmeteo/index.d.ts",
+            "import": "./dist/openmeteo/index.js"
+        },
+        "./worldbank": {
+            "types": "./dist/worldbank/index.d.ts",
+            "import": "./dist/worldbank/index.js"
+        }
+    },
+    "scripts": {
+        "lint": "oxlint src tests",
+        "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+        "test": "node --test \"tests/**/*.test.ts\"",
+        "test:live": "node --test \"tests/live/**/*.live.ts\"",
+        "build": "rm -rf dist && tsc -p tsconfig.json --emitDeclarationOnly && tsup",
+        "dev": "tsup --watch",
+        "prepack": "pnpm run build"
+    },
+    "files": [
+        "dist",
+        "src"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "keywords": [
+        "API",
+        "REST API",
+        "fetch",
+        "HTTP",
+        "Client",
+        "REST API Client",
+        "JSONPlaceHolder",
+        "reqres",
+        "Wrapper",
+        "ESM",
+        "TypeScript"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ngmaibulat/packages.git",
+        "directory": "packages/restclients"
+    },
+    "bugs": {
+        "url": "https://github.com/ngmaibulat/packages/issues"
+    },
+    "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/restclients#readme",
+    "author": "Aibulat",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^26.2.0",
+        "oxlint": "1.78.0",
+        "tsup": "^8.3.6",
+        "typescript": "^7.0.2"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}

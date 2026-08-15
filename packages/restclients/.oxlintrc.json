@@ -1,0 +1,32 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "categories": {
+        "correctness": "error",
+        "suspicious": "error",
+        "perf": "error"
+    },
+    "rules": {
+        "eslint/no-unused-vars": [
+            "error",
+            {
+                "argsIgnorePattern": "^_",
+                "varsIgnorePattern": "^_",
+                "caughtErrorsIgnorePattern": "^_"
+            }
+        ],
+        "eslint/no-underscore-dangle": "off",
+        "unicorn/consistent-function-scoping": "off"
+    },
+    "overrides": [
+        {
+            "files": ["tests/types/*.ts"],
+            "rules": {
+                "eslint/no-new": "off",
+                "unicorn/require-module-specifiers": "off"
+            }
+        }
+    ],
+    "ignorePatterns": [
+        "dist"
+    ]
+}

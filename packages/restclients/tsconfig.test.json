@@ -1,0 +1,14 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": ".",
+        /* TypeScript 7 does not auto-discover @types packages here, so name it. */
+        "types": ["node"],
+        /* tests/types/*.ts asserts by annotating a binding it never reads.
+           That is the whole mechanism, so the check is off for this project
+           and `npm run typecheck` runs the src project separately. */
+        "noUnusedLocals": false
+    },
+    "include": ["src", "tests"]
+}

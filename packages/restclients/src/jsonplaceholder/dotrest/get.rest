@@ -1,0 +1,54 @@
+### Get All
+get https://jsonplaceholder.typicode.com/posts
+
+
+### Get One
+get https://jsonplaceholder.typicode.com/posts/1
+
+
+
+
+### Get Comments By Post
+get https://jsonplaceholder.typicode.com/posts/1/comments
+
+
+### Get Comments By Post
+get https://jsonplaceholder.typicode.com/comments?postId=1
+
+
+### Get All Comments
+get https://jsonplaceholder.typicode.com/comments
+
+### Get One Comment
+get https://jsonplaceholder.typicode.com/comments/1
+
+
+### Get Albums
+get https://jsonplaceholder.typicode.com/albums
+
+### Get One Album
+get https://jsonplaceholder.typicode.com/albums/1
+
+
+
+### Get Photos
+get https://jsonplaceholder.typicode.com/photos
+
+### Get One Photo
+get https://jsonplaceholder.typicode.com/photos/1
+
+
+### Get Todos
+get https://jsonplaceholder.typicode.com/todos
+
+
+### Get One Todo
+get https://jsonplaceholder.typicode.com/todos/1
+
+
+### Get Users
+get https://jsonplaceholder.typicode.com/users
+
+
+### Get One User
+get https://jsonplaceholder.typicode.com/users/1

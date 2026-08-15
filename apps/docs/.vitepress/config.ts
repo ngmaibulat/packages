@@ -12,7 +12,14 @@ export default defineConfig({
     themeConfig: {
         nav: [
             { text: "run", link: "/run/", activeMatch: "/run/" },
+            { text: "http", link: "/http/", activeMatch: "/http/" },
+            {
+                text: "restclients",
+                link: "/restclients/",
+                activeMatch: "/restclients/",
+            },
             { text: "naser", link: "/naser/", activeMatch: "/naser/" },
+            { text: "funtest", link: "/funtest/", activeMatch: "/funtest/" },
             { text: "Notes", link: "/notes/cli", activeMatch: "/notes/" },
         ],
 
@@ -28,10 +35,47 @@ export default defineConfig({
                     ],
                 },
             ],
+            "/http/": [
+                {
+                    text: "@aibulat/http",
+                    items: [{ text: "Overview", link: "/http/" }],
+                },
+            ],
+            "/restclients/": [
+                {
+                    text: "@aibulat/restclients",
+                    items: [
+                        { text: "Overview", link: "/restclients/" },
+                        { text: "core", link: "/restclients/core" },
+                    ],
+                },
+                {
+                    text: "Clients",
+                    items: [
+                        {
+                            text: "jsonplaceholder",
+                            link: "/restclients/jsonplaceholder",
+                        },
+                        { text: "reqres", link: "/restclients/reqres" },
+                        { text: "dummyjson", link: "/restclients/dummyjson" },
+                        { text: "httpbin", link: "/restclients/httpbin" },
+                        { text: "github", link: "/restclients/github" },
+                        { text: "ipinfo", link: "/restclients/ipinfo" },
+                        { text: "openmeteo", link: "/restclients/openmeteo" },
+                        { text: "worldbank", link: "/restclients/worldbank" },
+                    ],
+                },
+            ],
             "/naser/": [
                 {
                     text: "@aibulat/naser",
                     items: [{ text: "Overview", link: "/naser/" }],
+                },
+            ],
+            "/funtest/": [
+                {
+                    text: "@aibulat/funtest",
+                    items: [{ text: "Overview", link: "/funtest/" }],
                 },
             ],
             "/notes/": [

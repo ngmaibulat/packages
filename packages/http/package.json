@@ -1,0 +1,72 @@
+{
+  "name": "@aibulat/http",
+  "version": "0.1.2",
+  "description": "HTTPie-style command line HTTP client with a shortcut command per method, including QUERY",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "httpc": "dist/bin/httpc.js",
+    "get": "dist/bin/get.js",
+    "post": "dist/bin/post.js",
+    "put": "dist/bin/put.js",
+    "delete": "dist/bin/delete.js",
+    "options": "dist/bin/options.js",
+    "query": "dist/bin/query.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "pnpm run clean && tsc --emitDeclarationOnly && tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/*.test.ts\"",
+    "test:dist": "pnpm run build && HTTP_BIN_DIR=dist/bin HTTP_BIN_EXT=.js node --test \"test/*.test.ts\"",
+    "prepack": "pnpm run build"
+  },
+  "keywords": [
+    "http",
+    "https",
+    "client",
+    "cli",
+    "httpie",
+    "curl",
+    "rest",
+    "api",
+    "query",
+    "fetch"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/http"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/http#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "tsup": "^8.3.6",
+    "typescript": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=26"
+  }
+}

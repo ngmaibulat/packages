@@ -1,0 +1,50 @@
+{
+    "compilerOptions": {
+        "target": "ES2023",
+        /* DOM is here for fetch, Response, Headers and AbortController -- not
+           for the document. TypeScript has no fetch-only lib, and `types: []`
+           below keeps Node's copies of those globals out. */
+        "lib": ["ES2023", "DOM", "DOM.Iterable"],
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
+
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+
+        /* A dead binding is how dummyjson's bearer token leaked into every
+           RequestInit: `const {token, ...config}` was computed and the
+           `config` never used, so `options` went to the base class instead.
+           Off in tsconfig.test.json, where tests/types/*.ts is deliberately
+           full of unused `const _x` assertions. */
+        "noUnusedLocals": true,
+
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+
+        /* Sources import with .ts specifiers so Node can run them directly;
+           tsc rewrites them to .js on emit. See CLAUDE.md. */
+        "allowImportingTsExtensions": true,
+        "rewriteRelativeImportExtensions": true,
+
+        /* Nothing in src may have runtime-emitting type syntax (enums,
+           namespaces, parameter properties) -- Node only strips types. */
+        "erasableSyntaxOnly": true,
+
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+
+        "forceConsistentCasingInFileNames": true,
+        "skipLibCheck": true,
+
+        /* The library must run in the browser too, so no Node globals leak
+           into src. Tests opt back in via tsconfig.test.json. */
+        "types": [],
+
+        "rootDir": "src",
+        "outDir": "dist"
+    },
+    "include": ["src"]
+}

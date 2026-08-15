@@ -1,0 +1,50 @@
+{
+    "name": "@aibulat/funtest",
+    "version": "0.0.16",
+    "description": "Zero-dependency smoke tests for some publicly available REST APIs, using node:test and fetch",
+    "type": "module",
+    "bin": {
+        "funtest": "./bin/run.sh"
+    },
+    "scripts": {
+        "test:live": "./bin/run.sh",
+        "typecheck": "tsc --noEmit",
+        "build": "tsup",
+        "dev": "tsup --watch",
+        "prepack": "pnpm run build"
+    },
+    "files": [
+        "bin/",
+        "dist/"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "keywords": [
+        "REST API",
+        "API",
+        "Test",
+        "node:test",
+        "fetch",
+        "zero-dependency"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ngmaibulat/packages.git",
+        "directory": "packages/funtest"
+    },
+    "bugs": {
+        "url": "https://github.com/ngmaibulat/packages/issues"
+    },
+    "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/funtest#readme",
+    "author": "Aibulat",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^26.2.0",
+        "tsup": "^8.3.6",
+        "typescript": "^7.0.2"
+    },
+    "engines": {
+        "node": ">=22.18"
+    }
+}

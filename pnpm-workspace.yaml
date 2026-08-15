@@ -8,3 +8,14 @@ packages:
 # binaries as optional per-platform deps and declares no install scripts.
 allowBuilds:
   esbuild: true
+
+# A minimumReleaseAge policy (a delay before a freshly published version may be
+# installed) rejects these three, which are the exact versions packages/restclients
+# has been developing and publishing against since 5.0.0. oxlint is pinned to an
+# exact version on purpose, so there is no older release to fall back to, and its
+# platform bindings are published in lockstep with it. Only these versions are
+# exempt; every other package still goes through the policy.
+minimumReleaseAgeExclude:
+  - oxlint@1.78.0
+  - '@oxlint/*'
+  - '@types/node@26.2.0'

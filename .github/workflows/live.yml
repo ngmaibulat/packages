@@ -1,0 +1,49 @@
+name: live smoke
+
+# The offline suites cannot notice when an upstream API renames a field or starts
+# rejecting a request. This job can - but it fails for reasons that are nobody's
+# fault (an API being down is not a bug here), so it never blocks anything. Read it
+# as a drift alarm, not as a gate.
+#
+# Two members opt in by declaring a `test:live` script: packages/restclients
+# (tests/live/*.live.ts) and packages/funtest, whose entire suite is live and which
+# therefore declares no plain `test` script at all - that is what keeps ci.yml
+# hermetic.
+
+on:
+    schedule:
+        - cron: '17 5 * * *'
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    live:
+        runs-on: ubuntu-latest
+        continue-on-error: true
+        timeout-minutes: 15
+
+        steps:
+            - uses: actions/checkout@v4
+
+            # Version comes from "packageManager" in the root package.json.
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 26
+                  cache: pnpm
+
+            - run: pnpm install --frozen-lockfile
+
+            # packages/funtest runs its suite through bin/run.sh, which prefers
+            # dist/*.test.js and falls back to src/*.test.ts. Building first means
+            # the published layout is what gets exercised.
+            - run: pnpm run build
+
+            # GITHUB_TOKEN raises the GitHub API rate limit. It is minted for every
+            # run; there is no secret to configure.
+            - run: pnpm run test:live
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

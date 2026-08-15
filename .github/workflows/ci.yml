@@ -18,7 +18,7 @@ jobs:
 
         # packages/run drives a real PTY and a chokidar watcher in its tests. A
         # hung pty is a job that would otherwise sit for the full six hours.
-        timeout-minutes: 10
+        timeout-minutes: 15
 
         steps:
             - uses: actions/checkout@v4
@@ -26,13 +26,85 @@ jobs:
             # Version comes from "packageManager" in the root package.json.
             - uses: pnpm/action-setup@v4
 
+            # 26 because packages/http declares `engines.node: ">=26"` and runs its
+            # suite straight off src/*.ts under native type stripping. Every other
+            # member asks for less, so the highest floor is the one to run.
             - uses: actions/setup-node@v4
               with:
-                  node-version: 24
+                  node-version: 26
                   cache: pnpm
 
             - run: pnpm install --frozen-lockfile
 
+            - run: pnpm run lint
+
             - run: pnpm run typecheck
 
+            # Hermetic. packages/funtest deliberately has no `test` script - its
+            # suite talks to live public APIs and runs in live.yml instead.
             - run: pnpm run test
+
+            # The bundler configs are only exercised by a build, and a build that
+            # first breaks during `pnpm release` breaks it mid-publish.
+            - run: pnpm run build
+
+            # packages/http ships compiled bins, so the suite is run a second time
+            # against dist/ - the one check that would catch a bundling regression
+            # in the shebangs, the exec bits, or the manifest lookup.
+            - run: pnpm --filter @aibulat/http run test:dist
+
+            # packages/restclients 1.x shipped with no type declarations at all,
+            # because an .npmignore `*.ts` rule also matched `*.d.ts`. Fail if that
+            # ever recurs.
+            - name: restclients tarball must contain type declarations
+              run: |
+                  pnpm --filter @aibulat/restclients pack --out /tmp/pack.tgz
+                  tar -tzf /tmp/pack.tgz | tee /tmp/pack.log
+                  grep -q '\.d\.ts' /tmp/pack.log || {
+                    echo "::error::packed tarball lists no .d.ts files -- the package would ship without types"
+                    exit 1
+                  }
+
+    consumer:
+        # packages/restclients says `engines.node: ">=20"` and consumers get plain
+        # JS from dist - but its own suite cannot run there (it executes the
+        # TypeScript sources directly, which needs native type stripping from
+        # 22.18). So build on 26 and load the built output on 20.
+        #
+        # The import identity check is load-bearing: the nine subpath bundles share
+        # `core` through a split chunk, and every barrel re-exports HttpError so
+        # consumers can instanceof-check it. If splitting ever regresses, each
+        # bundle gets a private copy and that check silently starts returning false.
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 26
+                  cache: pnpm
+
+            - run: pnpm install --frozen-lockfile
+
+            - run: pnpm --filter @aibulat/restclients run build
+
+            # No cache and no install here - this step only runs `node` against the
+            # already-built dist.
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+
+            - name: dist must load on the oldest supported Node
+              run: |
+                  node --input-type=module -e "
+                    const core = await import('./packages/restclients/dist/core/index.js');
+                    const gh = await import('./packages/restclients/dist/github/index.js');
+                    if (typeof core.BaseApi !== 'function') throw new Error('BaseApi missing from dist');
+                    if (typeof core.HttpError !== 'function') throw new Error('HttpError missing from dist');
+                    if (typeof gh.GithubApi !== 'function') throw new Error('GithubApi missing from dist');
+                    if (core.HttpError !== gh.HttpError) throw new Error('HttpError identity split across subpath bundles');
+                  "
