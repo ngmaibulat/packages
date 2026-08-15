@@ -15,10 +15,16 @@ packages:
 # packages/watch-dir-count). It is a native DTrace binding that is useful on
 # illumos/macOS and pointless on the Linux CI runner; bunyan wraps its require in
 # a try/catch and simply skips DTrace when it is missing. Left unbuilt on purpose.
+# vue-demi arrives under @scalar/api-reference (via packages/mk-swagger-ui), whose
+# Vue dependency chain pulls it in. Its postinstall rewrites the package to target
+# whichever Vue major is installed, which only matters to code that imports the Vue
+# library at runtime. mk-swagger-ui never does: it copies Scalar's prebuilt browser
+# bundle out of the package and touches nothing else in it.
 allowBuilds:
   dtrace-provider: false
   esbuild: true
   posix: true
+  vue-demi: false
 
 # A minimumReleaseAge policy (a delay before a freshly published version may be
 # installed) rejects these three, which are the exact versions packages/restclients

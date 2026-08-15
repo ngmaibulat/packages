@@ -46,6 +46,10 @@ features:
       details: Render Markdown in the terminal, from a file or straight off stdin.
       link: /mark/
       linkText: Read the docs
+    - title: mk-swagger-ui
+      details: Turn an OpenAPI YAML document into a static, self-contained API reference rendered with Scalar, with a built-in preview server and a TypeScript interface generator for its schemas.
+      link: /mk-swagger-ui/
+      linkText: Read the docs
     - title: "@aibulat/sendeml"
       details: Send raw .eml files to an SMTP server — one file, a directory, or a Haraka queue with its own envelope format.
       link: /sendeml/

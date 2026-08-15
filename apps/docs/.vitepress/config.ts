@@ -10,8 +10,8 @@ export default defineConfig({
     cleanUrls: true,
 
     themeConfig: {
-        // Grouped rather than flat: there are fifteen packages, and a nav bar
-        // with fifteen top-level entries wraps and stops being scannable.
+        // Grouped rather than flat: there are seventeen packages, and a nav bar
+        // with seventeen top-level entries wraps and stops being scannable.
         nav: [
             {
                 text: "CLI tools",
@@ -21,11 +21,13 @@ export default defineConfig({
                     { text: "mark", link: "/mark/" },
                     { text: "naser", link: "/naser/" },
                     { text: "fs", link: "/fs/" },
+                    { text: "mk-swagger-ui", link: "/mk-swagger-ui/" },
                     { text: "sendeml", link: "/sendeml/" },
                     { text: "watch-dir-count", link: "/watch-dir-count/" },
                     { text: "auth", link: "/auth/" },
                     { text: "installer", link: "/installer/" },
                     { text: "ctl-ufw", link: "/ctl-ufw/" },
+                    { text: "create-tsreact", link: "/create-tsreact/" },
                 ],
             },
             {
@@ -126,6 +128,14 @@ export default defineConfig({
                     items: [{ text: "Overview", link: "/mark/" }],
                 },
             ],
+            // No scope: this one is published as plain `mk-swagger-ui`, which
+            // is the name it has had on npm since 2022.
+            "/mk-swagger-ui/": [
+                {
+                    text: "mk-swagger-ui",
+                    items: [{ text: "Overview", link: "/mk-swagger-ui/" }],
+                },
+            ],
             "/auth/": [
                 {
                     text: "@aibulat/auth",
@@ -136,6 +146,14 @@ export default defineConfig({
                 {
                     text: "@aibulat/installer",
                     items: [{ text: "Overview", link: "/installer/" }],
+                },
+            ],
+            "/create-tsreact/": [
+                {
+                    // Unscoped, like mk-swagger-ui - but here the name is
+                    // load-bearing: `npm create tsreact` resolves to it.
+                    text: "create-tsreact",
+                    items: [{ text: "Overview", link: "/create-tsreact/" }],
                 },
             ],
             "/ctl-ufw/": [

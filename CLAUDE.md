@@ -15,11 +15,13 @@ A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*
 - `packages/json` → `@aibulat/json`, `readJson<T>()` over `isfile`.
 - `packages/fs` → `@aibulat/fs`, filesystem helpers plus an `fs` bin. The only package with a native compile (`posix`) and a WASM dep (`@npcz/magic`).
 - `packages/mark` → `@aibulat/mark`, a terminal Markdown renderer (`bin`: `mark`).
+- `packages/mk-swagger-ui` → **`mk-swagger-ui`**, a static OpenAPI reference generator, rendering with **Scalar** despite the name (`bin`: `mk-swagger-ui`). One of the two members published without the `@aibulat` scope — see **The unscoped members** below.
 - `packages/sendeml` → `@aibulat/sendeml`, sends raw `.eml` files to SMTP, including Haraka queue dirs (`bin`: `sendeml`). Mid-restructure — see below.
 - `packages/watch-dir-count` → `@aibulat/watch-dir-count`, polls a directory's file count and fires a command plus an email over a threshold (`bin`: `wdc`). Ships `templates/`.
 - `packages/auth` → `@aibulat/auth`, bcrypt credentials in a knex-backed table (`bin`: `auth`, `bcrypt`, `bcrypt-compare`).
 - `packages/installer` → `@aibulat/installer`, Ubuntu provisioning scripts (`bin`: `i-ubuntu-mysql`, `i-ubuntu-vim`, `c-vim`, `gen-pw`).
 - `packages/ctl-ufw` → `@aibulat/ctl-ufw`, configures ufw from a JSON port list (`bin`: `ctl-ufw`). **Directory name is `ctl-ufw`, not `ufw`** — the release tag is derived from the basename.
+- `packages/create-tsreact` → **`create-tsreact`**, a TypeScript/React scaffolder (`bin`: `create-tsreact`). The other unscoped member, and the only one whose name *must* stay unscoped. Moved in from its own repo, which was itself a four-package workspace — see **The unscoped members** below.
 - `packages/svelte-admin-kit` → `@aibulat/svelte-admin-kit`, a Svelte 5 admin-UI component library (29 components, 15 subpath exports). **The one member that does not build with tsdown** — see **The `svelte-package` exception** below. Moved in from the `siem-tracker` repo; never published from there.
 - `apps/docs` → the VitePress documentation site, deployed to GitHub Pages at `https://ngmaibulat.github.io/packages/`. Private, never published to npm.
 - `examples/table` — workspace member, `private`, not published.
@@ -161,6 +163,50 @@ Every subpath barrel re-exports `HttpError` from `core` so consumers can `instan
 `oxlint` (`.oxlintrc.json`) lints this package. It is not the repo's only linter — `svelte-admin-kit` brings ESLint, because oxlint cannot parse `.svelte`.
 
 **`funtest`** — not a library. The published artifact is compiled test files; `bin/run.sh` prefers `dist/*.test.js` and falls back to `src/*.test.ts`, resolving `$0` through symlinks and passing explicit paths because Node's test runner skips `node_modules` during discovery. It declares **no `test` script** — its whole suite is live — which is what keeps root `pnpm run test` hermetic.
+
+## The unscoped members: `mk-swagger-ui` and `create-tsreact`
+
+Two members publish without the `@aibulat/` scope. The reasons differ: `mk-swagger-ui` *may* stay unscoped because renaming would forfeit an existing trusted-publisher path, while `create-tsreact` *must*, because the name is load-bearing at the call site.
+
+### `mk-swagger-ui`
+
+Restored from its **published tarball**, not from a repo — `mk-swagger-ui` had been on npm since 2022 (last release 1.0.6) with no GitHub repository and no local checkout. Nothing in it was compiled, so the 14 published `.mjs` and `.sh` files were the source; 1.0.0 through 1.0.6 were diffed and 1.0.6 is a strict superset. It follows the `run`/`naser` **alias style** (tsconfig `paths`, extensionless relative imports, `test/register.ts` under `node --test`) and builds with tsdown like everything else.
+
+**The npm name has no scope, and that is deliberate.** Renaming to `@aibulat/swagger-ui` would have meant a brand-new package, which cannot bootstrap through `publish.yml` — npm only exposes trusted-publisher settings for a package that already exists (the trap `@aibulat/svelte-admin-kit` is still in). `mk-swagger-ui` already exists, so its trusted publisher can be registered against `ngmaibulat/packages` + `publish.yml` immediately and CI takes over from there. **That registration must exist before a bumped manifest lands on `main`**, or the `publish` job fails with the same causeless 401. The directory basename is `mk-swagger-ui`, so `bump.ts` tags it `mk-swagger-ui@x.y.z`.
+
+Three things about the published 1.0.6 were fixed rather than restored, and they are the reason the port is not byte-faithful:
+
+- **It wrote into the caller's working directory.** `bin/mk-swagger-ui.sh` copied a `sample-package.json` into `$PWD` as `package.json`, ran `npm install js-yaml swagger-ui-dist serve` there, and copied the assets out of the *user's* `node_modules`. The renderer is a real dependency now and `src/assets.ts` resolves it from our own tree. Nothing outside the output directory is touched, and there is no depth assumption for tsdown's splitting to break.
+- **It registered six bins**, four of them squatting `list`, `clean`, `get-ui`, `get-editor` and `get-codegen` in the global `PATH` — the same hazard `@aibulat/http` avoids by keeping `head`/`patch` out of its `bin` map. They are commander subcommands of the single `mk-swagger-ui` bin now. `bin/fname.mjs` (a one-line `path.parse().name`) and `bin/help.mjs` have no successor by design.
+- **It ended with `npx serve dist` and blocked.** Preview is opt-in behind `--serve [port]`, served by `src/serve.ts` (~40 lines of `node:http`), so the package needs neither the network nor a dependency to preview.
+
+The `types` subcommand keeps the old `utils.mjs` generator's behaviour with two corrections: an array of `$ref` now renders as `Array<Pet>` rather than `Array<any>` (the original ran the referenced *name* through the primitive mapping), and `number`/`boolean` map to themselves instead of falling back to `any`. Everything unrecognised still answers `any`.
+
+**The renderer is Scalar, not Swagger UI** — the name is now historical. `swagger-ui-dist` is gone; the output is four files (`index.html`, `scalar.js`, `scalar-initializer.js`, `<name>.json`) instead of ten. Three things about that are load-bearing:
+
+- **It copies `dist/browser/standalone.js`, never `standalone.esm.js`.** Only the former is a self-contained IIFE; the ESM sibling lazy-loads ~90 files out of `chunks/`, so a folder built from it 404s the moment anything is clicked. A test asserts the copied bundle names no chunks.
+- **`@scalar/api-reference` publishes an `exports` map that lists neither `./package.json` nor anything under `dist/browser`.** `require.resolve("@scalar/api-reference/package.json")` therefore throws `ERR_PACKAGE_PATH_NOT_EXPORTED` — the trick that works for an ungated package does not work here. `src/assets.ts` resolves the one exported entry and **walks up to the manifest that names the package**, rather than assuming how deep that entry sits.
+- **The generated page is offline by default.** Scalar's theme pulls webfonts from `fonts.scalar.com` and its client can proxy "Test Request" traffic through `proxy.scalar.com`; the initializer is written with `withDefaultFonts: false` and no `proxyUrl`, and tests assert the output references no external host. `--fonts` opts back in. Verified for real: the generated site renders fully in headless Chromium with `--host-resolver-rules="MAP * 0.0.0.0, EXCLUDE 127.0.0.1"`.
+
+The range is `^1.64.1`, not the newest `1.65.1`, because the latter is younger than the workspace's `minimumReleaseAge` policy — widening the range is the right answer there rather than a `minimumReleaseAgeExclude` entry. Scalar's Vue chain also drags in `vue-demi`, whose postinstall retargets it at the installed Vue major; that only matters to code importing the Vue library at run time, which this package never does, so it is denied in `allowBuilds` alongside `dtrace-provider`.
+
+`get` gained a `scalar` target alongside the three swagger-api repos. `REPOS` carries each clone's **directory name** rather than deriving it, because `clean` used to assume every entry was `swagger-<key>` — true for the original three, false for `scalar`.
+
+### `create-tsreact`
+
+**The name cannot be scoped.** `npm create tsreact` resolves to the package literally named `create-tsreact`; scoping it would change the invocation to `npm create @aibulat/tsreact` and orphan every existing install. It was already on npm at `0.0.29`, so — like `mk-swagger-ui` and unlike `@aibulat/svelte-admin-kit` — its trusted publisher can be registered against `ngmaibulat/packages` + `publish.yml` right away. **Register it before a bumped manifest lands on `main`.** `bump.ts` tags it `create-tsreact@x.y.z` from the directory basename.
+
+**It arrived as a four-package pnpm workspace and was flattened into one.** `packages/cli` was the only published member; `@tsreact/bruno`, `@tsreact/pm` and `@tsreact/png` were private, versioned `0.0.0`, exported raw `.ts`, and were consumed as `workspace:*` devDependencies. They are now `src/bruno/`, `src/pm/` and `src/png/` inside the single package, reached through the `@/*` alias. Keeping them as members would have meant `workspace:*` ranges, which **`bump.ts` and `release.ts` both refuse**, and a fourth source-resolution style on top of the three that already coexist. Relative imports name the emitted sibling (`from "../apiFiles.js"`), so this follows the **migrated-nine alias style** and needs their `register.ts` with the `.js` → `.ts` probe branch.
+
+**The build moved from a bare esbuild CLI to tsdown**, and the committed 120 kB `bin/index.js` is gone — `dist/` is gitignored and `prepack` produces it like everywhere else. Two knock-on effects: `chalk` was previously inlined by `--bundle` and is now a genuine external runtime dependency (tsdown externalises `dependencies`), and the old `prepublishOnly` was dropped per the repo rule. The old husky pre-commit hook existed only to rebuild and re-stage that bundle; it, `lint-staged` and `oxfmt` were all dropped. `oxlint` stayed, pinned to `1.78.0` to match `restclients`.
+
+**`readVersion()` is gone.** It read `../package.json` off `import.meta.url`, which only held while the bundle sat at `bin/index.js`. It is now `import packageJson from "$/package.json" with { type: "json" }` — the same idiom as `run --version`, inlined at build time, with no depth assumption for splitting to break.
+
+**`smoke.mjs` is `test:live`, not `test`.** It scaffolds all eight templates into a temp dir and then installs, type-checks and builds each one — minutes, and networked. Following the `funtest` precedent it runs in `live.yml` and never gates CI. The hermetic `test` script is a separate `node:test` suite over the pure functions (`parseArgs`, `validateName`, the template tables, `detectPm`, `infer`, `encodePng`/`icon`); it is what root `pnpm run test` picks up. Run `test:live` by hand before releasing — nothing else exercises the presets.
+
+**There are no template files on disk.** Every scaffolded file is a template literal returned from one of the 58 `gen*.ts` modules, and the PWA icons are generated in-process by `src/png/`. The usual `create-*` packaging hazards — `_gitignore` renames, nested fixture manifests, assets caught by the root `.gitignore` — do not apply. The `createRequire(...)("./package.json")` in `genRolldownConfig.ts` is **generated output** for the scaffolded app, not code that runs here; leave it alone.
+
+The original repo still exists at `~/projects/npm/create-tsreact/`, including a much longer `CLAUDE.md` covering the generators in detail.
 
 ## The nine packages moved in from standalone repos
 

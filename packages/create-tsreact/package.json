@@ -1,0 +1,56 @@
+{
+  "name": "create-tsreact",
+  "version": "0.0.29",
+  "description": "TS/React Scaffolder using esbuild compiler/bundler",
+  "type": "module",
+  "bin": {
+    "create-tsreact": "dist/index.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src test",
+    "test": "node --import ./test/register.ts --test \"test/**/*.test.ts\"",
+    "test:live": "pnpm run build && node smoke.mjs",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "prepack": "pnpm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "Scaffolder",
+    "Typescript",
+    "React",
+    "Create Application",
+    "ESBuild",
+    "Generator"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngmaibulat/packages.git",
+    "directory": "packages/create-tsreact"
+  },
+  "bugs": {
+    "url": "https://github.com/ngmaibulat/packages/issues"
+  },
+  "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/create-tsreact#readme",
+  "author": "Aibulat",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "oxlint": "1.78.0",
+    "publint": "^0.3.23",
+    "tsdown": "^0.22.14",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

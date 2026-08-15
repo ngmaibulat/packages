@@ -1,0 +1,60 @@
+openapi: 3.0.3
+
+info:
+    title: Pet Store
+    description: A small document for developing against, not published.
+    version: 1.0.0
+
+servers:
+    - url: https://example.com/api
+
+paths:
+    /pets:
+        get:
+            summary: List pets
+            responses:
+                "200":
+                    description: A list of pets
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/PetList"
+
+components:
+    schemas:
+        Pet:
+            type: object
+            properties:
+                id:
+                    type: integer
+                name:
+                    type: string
+                weight:
+                    type: number
+                adopted:
+                    type: boolean
+                tags:
+                    type: array
+                    items:
+                        type: string
+                owner:
+                    $ref: "#/components/schemas/Owner"
+                metadata: {}
+
+        Owner:
+            type: object
+            properties:
+                id:
+                    type: integer
+                email:
+                    type: string
+
+        PetList:
+            type: object
+            properties:
+                total:
+                    type: integer
+                items:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/Pet"
