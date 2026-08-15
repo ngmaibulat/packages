@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/run",
-  "version": "0.2.23",
+  "version": "0.2.24",
   "description": "Run a program with env vars specified",
   "main": "./dist/lib.js",
   "types": "./dist/lib.d.ts",

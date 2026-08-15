@@ -1,6 +1,6 @@
 {
     "name": "@aibulat/restclients",
-    "version": "5.0.0",
+    "version": "5.0.1",
     "description": "A set of REST API clients using Typescript and fetch",
     "type": "module",
     "sideEffects": false,

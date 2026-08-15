@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/installer",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "description": "Package to perform various installation automations",
   "type": "module",
   "bin": {

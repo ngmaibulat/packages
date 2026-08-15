@@ -1,6 +1,6 @@
 {
 	"name": "@aibulat/svelte-admin-kit",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Reusable Svelte 5 admin-UI primitives — controls, layout, feedback, data display, overlays, icon registry, Monaco and tiptap editors.",
 	"license": "MIT",
 	"author": "Aibulat",
