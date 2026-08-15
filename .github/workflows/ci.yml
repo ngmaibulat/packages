@@ -38,15 +38,27 @@ jobs:
 
             - run: pnpm run lint
 
+            # Build FIRST, and not just because the bundler configs need exercising
+            # before `pnpm release` hits them mid-publish.
+            #
+            # linkWorkspacePackages (see pnpm-workspace.yaml) resolves an internal
+            # dependency to the sibling package directory rather than to its published
+            # tarball. The tarball ships dist/ and its .d.ts; the sibling directory does
+            # not - dist/ is gitignored, so a fresh checkout has none. Typecheck any
+            # package with an internal dependency before a build and tsc reports
+            # TS2307 "Cannot find module '@aibulat/isfile'", because it is looking at
+            # packages/isfile/dist, which does not exist yet.
+            #
+            # `pnpm -r run build` is topological, so isfile builds before json, fs
+            # before watch-dir-count. That ordering is what makes the rest of this job
+            # possible at all.
+            - run: pnpm run build
+
             - run: pnpm run typecheck
 
             # Hermetic. packages/funtest deliberately has no `test` script - its
             # suite talks to live public APIs and runs in live.yml instead.
             - run: pnpm run test
-
-            # The bundler configs are only exercised by a build, and a build that
-            # first breaks during `pnpm release` breaks it mid-publish.
-            - run: pnpm run build
 
             # packages/http ships compiled bins, so the suite is run a second time
             # against dist/ - the one check that would catch a bundling regression

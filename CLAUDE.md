@@ -36,12 +36,16 @@ From the repo root, across all members:
 
 ```bash
 pnpm install
-pnpm run build       # pnpm -r run build
+pnpm run build       # pnpm -r run build      — RUN THIS FIRST, see below
 pnpm run test        # pnpm -r run test      — offline, always
 pnpm run test:live   # pnpm -r run test:live — talks to the real internet
 pnpm run typecheck   # pnpm -r run typecheck
 pnpm run lint        # pnpm -r run lint      — only restclients and svelte-admin-kit define it
 ```
+
+**`build` must run before `typecheck` on a fresh checkout.** This is not a preference;
+it is a hard ordering constraint, and getting it wrong produces an error that names
+neither the cause nor the culprit. See **Build order** under Conventions.
 
 `pnpm run test` is hermetic and must stay that way: it is what CI gates on. The two
 members with live suites (`restclients`, `funtest`) expose them as `test:live`, which
@@ -91,7 +95,9 @@ pnpm bump --no-git        # write the manifests, skip the commit and tags
 
 Then `git push --follow-tags` — a bare push leaves the tags behind.
 
-`scripts/release.ts` (`pnpm release`, `pnpm release:dry`) publishes in topological order. Every check runs against every package before anything reaches the registry: clean worktree, registry state, internal range consistency, credentials, then `typecheck` and `test`. Versions already on npm are **skipped, not failed**, so a half-finished release is safe to re-run.
+`scripts/release.ts` (`pnpm release`, `pnpm release:dry`) publishes in topological order. Every check runs against every package before anything reaches the registry: clean worktree, registry state, internal range consistency, credentials, then `build`, `typecheck` and `test`. Versions already on npm are **skipped, not failed**, so a half-finished release is safe to re-run.
+
+`build` leads that trio and cannot be dropped from it — see **Build order** under Conventions. It runs on a fresh CI checkout with no `dist/` anywhere, and every package with an internal dependency fails `typecheck` until one exists.
 
 Publishing happens in CI, not on a laptop. `.github/workflows/publish.yml` fires on a push to `main` touching `packages/*/package.json` and authenticates with **npm trusted publishing** — OIDC, no token, no GitHub Environment. Every published package needs its trusted publisher registered on npmjs.com against repository `ngmaibulat/packages` and workflow `publish.yml`, with the environment field left **empty**; a package whose publisher still points at its old standalone repo fails with a 401 that names no cause. Two things there are load-bearing: the **filename** `publish.yml`, which npm binds each package's trusted publisher to, and the absence of `registry-url:` on `setup-node`, which would otherwise write an `.npmrc` whose empty `NODE_AUTH_TOKEN` shadows the OIDC exchange. `workflow_dispatch` with `dry_run` is the manual path.
 

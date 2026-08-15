@@ -177,9 +177,20 @@ else if (willPublish && !dryRun) {
 
 // 5. the suite, again. ci.yml runs it on every push, but a release is the one
 //    place where "it passed on some earlier commit" is not good enough.
+//
+//    `build` comes first, and is not optional. linkWorkspacePackages resolves an
+//    internal dependency to the sibling package directory instead of its published
+//    tarball, and that directory has no dist/ until something builds it - dist/ is
+//    gitignored, so the CI checkout this runs in starts without one. Typecheck
+//    before a build and tsc cannot find '@aibulat/isfile' at all. `pnpm -r` builds
+//    topologically, so the dependency's dist exists before its dependent needs it.
+//
+//    This also leaves dist/ in place for `npm publish` further down; prepack
+//    rebuilds it per package anyway, and dist/ is gitignored so the worktree check
+//    above stays satisfied.
 if (!dryRun) {
     console.log('\nverifying...');
-    for (const script of ['typecheck', 'test']) {
+    for (const script of ['build', 'typecheck', 'test']) {
         const proc = spawnSync('pnpm', ['run', script], { cwd: ROOT, stdio: 'inherit' });
         if (proc.error || proc.status !== 0) problems.push(`\`pnpm run ${script}\` failed`);
     }
