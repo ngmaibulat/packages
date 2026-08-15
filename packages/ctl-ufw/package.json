@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/ctl-ufw",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Manage UFW rules",
   "type": "module",
   "bin": {

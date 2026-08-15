@@ -1,6 +1,6 @@
 {
   "name": "@aibulat/isfile",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "check if file exists",
   "type": "module",
   "main": "./dist/index.js",
