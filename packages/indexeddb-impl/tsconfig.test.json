@@ -1,0 +1,15 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": ".",
+        /* Tests are the one place Node's globals are allowed: the runner, the
+           WPT harness and the QUnit shim all use node:test and node:assert. */
+        "types": ["node"],
+        /* The vendored WPT and QUnit corpora are third-party JavaScript kept as
+           close to upstream as possible, so they are not held to our strictness. */
+        "allowJs": false
+    },
+    "include": ["src", "test/**/*.ts"],
+    "exclude": ["test/wpt/converted", "test/wpt/IndexedDB", "test/qunit/suite"]
+}

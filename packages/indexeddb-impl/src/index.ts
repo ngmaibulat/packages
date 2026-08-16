@@ -1,0 +1,17 @@
+import fakeIndexedDB from "./fakeIndexedDB.ts";
+export default fakeIndexedDB;
+export { fakeIndexedDB as indexedDB };
+export { default as IDBCursor } from "./FDBCursor.ts";
+export { default as IDBCursorWithValue } from "./FDBCursorWithValue.ts";
+export { default as IDBDatabase } from "./FDBDatabase.ts";
+export { default as IDBFactory } from "./FDBFactory.ts";
+export { default as IDBIndex } from "./FDBIndex.ts";
+export { default as IDBKeyRange } from "./FDBKeyRange.ts";
+export { default as IDBObjectStore } from "./FDBObjectStore.ts";
+export { default as IDBOpenDBRequest } from "./FDBOpenDBRequest.ts";
+export { default as IDBRecord } from "./FDBRecord.ts";
+export { default as IDBRequest } from "./FDBRequest.ts";
+export { default as IDBTransaction } from "./FDBTransaction.ts";
+export { default as IDBVersionChangeEvent } from "./FDBVersionChangeEvent.ts";
+export { default as forceCloseDatabase } from "./forceCloseDatabase.ts";
+export { installGlobals } from "./install.ts";

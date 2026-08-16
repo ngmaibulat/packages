@@ -15,6 +15,7 @@ A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*
 - `packages/json` → `@aibulat/json`, `readJson<T>()` over `isfile`.
 - `packages/indexeddb` → `@aibulat/indexeddb`, a promise wrapper over IndexedDB. Forked from [`idb`](https://github.com/jakearchibald/idb) at v8.0.3 and maintained as an **API-compatible superset** — everything idb does behaves identically, plus fixes and additions upstream never shipped (see its CHANGELOG for the list and the upstream issue numbers). A browser library with no `bin`; like `restclients` it builds `platform: "neutral"` and must stay browser-safe. **The only package whose tests need an IndexedDB implementation** — they run on `fake-indexeddb` under `node:test`, not in a browser. Its tsconfig `lib` includes `ESNext.Disposable` for `Symbol.dispose`; consumers do **not** need it, because `entry.ts` keys that member off a type that collapses to `never` when the lib is absent. Do not "simplify" that to a plain `[Symbol.dispose]()` — it would break consumers on a narrower `lib`, which is upstream's `WeakKey` bug (#331).
 - `packages/fs` → `@aibulat/fs`, filesystem helpers plus an `fs` bin. The only package with a native compile (`posix`) and a WASM dep (`@npcz/magic`).
+- `packages/indexeddb-impl` → `@aibulat/indexeddb-impl`, a pure-JS in-memory implementation of IndexedDB. Forked from [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB) at v6.2.5 (no history grafted), API unchanged apart from an added `installGlobals()`. **Apache-2.0, not MIT** — it is the one package with a `NOTICE`, which the licence requires; keep both in the published `files`. Like `restclients` and `indexeddb` it builds `platform: "neutral"` and must stay browser-safe. Its four test suites (WPT conformance, the QUnit corpus, unit, smoke — 1,748 tests) all run headless, and **the same suites must pass under both `node --test` and `bun test`** with identical totals; `test:bun` is what proves the second half. See **The two runtimes** below.
 - `packages/mark` → `@aibulat/mark`, a terminal Markdown renderer (`bin`: `mark`).
 - `packages/mk-swagger-ui` → **`mk-swagger-ui`**, a static OpenAPI reference generator, rendering with **Scalar** despite the name (`bin`: `mk-swagger-ui`). One of the two members published without the `@aibulat` scope — see **The unscoped members** below.
 - `packages/sendeml` → `@aibulat/sendeml`, sends raw `.eml` files to SMTP, including Haraka queue dirs (`bin`: `sendeml`). Mid-restructure — see below.
@@ -256,6 +257,37 @@ Consequences of that, all of which differ from every other package here:
 - **The eleven `@tiptap/*` ranges are exact, and `pnpm-workspace.yaml` pins twenty more.** tiptap's extensions register against one copy of `@tiptap/core` and its peer ranges are exact, so the tree has to be uniform. But `@tiptap/starter-kit` depends on the leaf extensions by *caret*, so a lockfile resolved today floats twenty of them past the pinned core — the mismatch `pnpm peers check` reports. An `overrides:` block pins them back to 3.27.3. Bump the overrides and the eleven manifest ranges **together**; nothing in the suite renders the editor, so a split tree would not surface until runtime.
 
 Tests here are **vitest**, not `node:test` — the only member that is. All three suites are pure-function or CSS-source-text assertions and render no components, so root `pnpm run test` stays hermetic. `vite.config.ts` exists only to configure vitest; it builds nothing. It sets `css: true` because vitest otherwise stubs CSS modules to an empty string, which would also empty the `?raw` imports `themeTokens.test.ts` reads the stylesheets through.
+
+## The two runtimes: `@aibulat/indexeddb-impl`
+
+Every other package targets Node. This one must also pass under **Bun**, and
+that is not a formality — four real defects surfaced only there, all of them
+latent bugs rather than Bun quirks. Keep `pnpm --filter @aibulat/indexeddb-impl run test:bun`
+green alongside `test`; the two report identical totals, and a divergence is the
+signal.
+
+Two differences drive almost everything:
+
+- **Bun shares one process across test files; `node --test` forks one per file.**
+  A side-effect import therefore runs *once* under Bun, so anything that relies
+  on re-importing a module to re-run it silently no-ops. That is why
+  `installGlobals()` exists next to `src/auto.ts`, and why tests must call it
+  rather than re-importing `auto`. The same trap applies to any global-mutating
+  fixture added later.
+- **Bun does not support `test()` inside `test()`** ([oven-sh/bun#5090](https://github.com/oven-sh/bun/issues/5090)),
+  which `node:test` does. `test/wpt/run-all.js` therefore awaits each file's
+  child process *before* registering its assertions, so they are siblings inside
+  a `describe()`. `describe` nesting is fine on both. Do not "simplify" that back
+  into a nested `await t.test(...)`.
+
+Also load-bearing there: verdicts are computed synchronously during that loop,
+not inside the test callbacks, because `GENERATE_MANIFESTS=1` writes the
+manifests at the end of each iteration and callbacks have not run by then.
+
+The vendored corpora under `test/wpt/` and `test/qunit/suite/` are third-party
+and kept byte-close to upstream so they can be re-synced; they are in
+`.prettierignore` and excluded from `tsconfig.test.json`. Local edits to them
+(there are three, all runtime-compatibility fixes) carry a comment saying so.
 
 ## Conventions and constraints
 

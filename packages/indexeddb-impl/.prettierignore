@@ -1,0 +1,5 @@
+# Third-party corpora, kept byte-close to upstream so they can be re-synced.
+test/wpt/converted
+test/wpt/IndexedDB
+test/wpt/manifests
+test/qunit/suite

@@ -35,6 +35,10 @@ export default defineConfig({
                 items: [
                     { text: "restclients", link: "/restclients/" },
                     { text: "indexeddb", link: "/indexeddb/" },
+                    {
+                        text: "indexeddb-impl",
+                        link: "/indexeddb-impl/",
+                    },
                     { text: "isfile", link: "/isfile/" },
                     { text: "json", link: "/json/" },
                     { text: "svelte-admin-kit", link: "/svelte-admin-kit/" },
@@ -121,6 +125,14 @@ export default defineConfig({
                 {
                     text: "@aibulat/indexeddb",
                     items: [{ text: "Overview", link: "/indexeddb/" }],
+                },
+            ],
+            "/indexeddb-impl/": [
+                {
+                    text: "@aibulat/indexeddb-impl",
+                    items: [
+                        { text: "Overview", link: "/indexeddb-impl/" },
+                    ],
                 },
             ],
             "/fs/": [

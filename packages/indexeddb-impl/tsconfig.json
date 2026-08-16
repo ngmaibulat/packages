@@ -1,0 +1,50 @@
+{
+    "compilerOptions": {
+        "target": "ES2023",
+        /* DOM is where IDBFactory, IDBRequest, DOMException and the rest of the
+           surface this package *reimplements* are declared -- the classes here
+           are checked against those shapes. `types: []` below keeps Node's
+           globals out, because the implementation must also run in a browser
+           and in a worker. */
+        "lib": ["ES2023", "DOM", "DOM.Iterable"],
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
+
+        "strict": true,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+
+        /* Upstream ran with this off. It stays off here: the implementation
+           rethrows DOMExceptions it constructs itself and reads `.name` off
+           caught values in a dozen places, and turning it on would mean
+           auditing every catch for no behavioural gain. */
+        "useUnknownInCatchVariables": false,
+
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+
+        /* Sources import with .ts specifiers so Node and Bun can both run them
+           directly under a test runner; tsc rewrites them to .js on emit. Same
+           style as @aibulat/indexeddb next door -- no path aliases, no
+           test/register.ts. See Conventions in the root CLAUDE.md. */
+        "allowImportingTsExtensions": true,
+        "rewriteRelativeImportExtensions": true,
+
+        /* Nothing in src may have runtime-emitting type syntax (enums,
+           namespaces, parameter properties) -- Node only strips types. */
+        "erasableSyntaxOnly": true,
+
+        "declaration": false,
+        "sourceMap": true,
+
+        "forceConsistentCasingInFileNames": true,
+        "skipLibCheck": true,
+
+        /* No Node globals in src: this runs in browsers and workers too. */
+        "types": [],
+
+        "rootDir": "src",
+        "outDir": "dist"
+    },
+    "include": ["src"]
+}
