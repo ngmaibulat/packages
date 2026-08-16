@@ -94,18 +94,26 @@ function createAssert(): {
             }
         };
 
+    // node:assert overloads the message as either `Error | AssertMessageFunction`
+    // (optional) or `string` (required), with no overload accepting
+    // `string | undefined`. The corpus passes a message most but not all of the
+    // time, so the call has to branch rather than forward a maybe-string.
     const api: QUnitAssert = {
-        ok: track((value: unknown, message?: string) =>
-            assert.ok(value, message),
-        ),
+        ok: track((value: unknown, message?: string) => {
+            if (message === undefined) assert.ok(value);
+            else assert.ok(value, message);
+        }),
         // QUnit's equal is intentionally loose, and the corpus relies on it
         // (comparing a Date to a string, a number to a numeric string).
-        equal: track((actual: unknown, expected: unknown, message?: string) =>
-            assert.equal(actual, expected, message),
-        ),
+        equal: track((actual: unknown, expected: unknown, message?: string) => {
+            if (message === undefined) assert.equal(actual, expected);
+            else assert.equal(actual, expected, message);
+        }),
         deepEqual: track(
-            (actual: unknown, expected: unknown, message?: string) =>
-                assert.deepEqual(actual, expected, message),
+            (actual: unknown, expected: unknown, message?: string) => {
+                if (message === undefined) assert.deepEqual(actual, expected);
+                else assert.deepEqual(actual, expected, message);
+            },
         ),
         expect(n: number) {
             expected = n;

@@ -96,7 +96,10 @@ Regenerate them with `GENERATE_MANIFESTS=1 pnpm run test:wpt`.
 
 ### Known gaps
 
-144 conformance tests are recorded as expected failures and 4 as expected
-timeouts. They are the difference between this implementation and a browser's —
-blob storage, some structured-clone corners, and a few transaction-scheduling
-edges. `test/wpt/manifests/` is the authoritative list.
+149 conformance tests are recorded as expected failures and 4 as expected
+timeouts. 132 of them are WebIDL interface-shape checks in a single file rather
+than behavioural defects; the genuinely behavioural set is 17 tests and the 4
+timeouts, mostly transaction activation timing.
+
+`test/wpt/manifests/` is the authoritative record, and
+[CONFORMANCE.md](CONFORMANCE.md) breaks the gaps down and plans the fixes.

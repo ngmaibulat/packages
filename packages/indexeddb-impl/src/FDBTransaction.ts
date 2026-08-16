@@ -21,6 +21,7 @@ import type {
 import type FDBOpenDBRequest from "./FDBOpenDBRequest.ts";
 import type ObjectStore from "./lib/ObjectStore.ts";
 import type Index from "./lib/Index.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 const prioritizedListenerTypes = ["error", "abort", "complete"] as const;
 export type PrioritizedListenerType = (typeof prioritizedListenerTypes)[number];
@@ -33,14 +34,55 @@ class FDBTransaction extends FakeEventTarget {
     public _objectStoresCache: Map<string, FDBObjectStore> = new Map();
     public _openRequest: FDBOpenDBRequest | null = null;
 
-    public objectStoreNames: FakeDOMStringList;
-    public mode: TransactionMode;
-    public durability: FDBTransactionDurability;
-    public db: FDBDatabase;
-    public error: Error | null = null;
-    public override onabort: EventCallback | null = null;
-    public override oncomplete: EventCallback | null = null;
-    public override onerror: EventCallback | null = null;
+    public _objectStoreNames: FakeDOMStringList;
+    // readonly attribute, per IndexedDB.idl
+    get objectStoreNames() {
+        return this._objectStoreNames;
+    }
+    public _mode: TransactionMode;
+    // readonly attribute, per IndexedDB.idl
+    get mode() {
+        return this._mode;
+    }
+    public _durability: FDBTransactionDurability;
+    // readonly attribute, per IndexedDB.idl
+    get durability() {
+        return this._durability;
+    }
+    public _db: FDBDatabase;
+    // readonly attribute, per IndexedDB.idl
+    get db() {
+        return this._db;
+    }
+    public _error: Error | null = null;
+    // readonly attribute, per IndexedDB.idl
+    get error() {
+        return this._error;
+    }
+    public _onabort: EventCallback | null = null;
+    // event handler attribute, per IndexedDB.idl
+    get onabort() {
+        return this._onabort;
+    }
+    set onabort(value: EventCallback | null) {
+        this._onabort = value;
+    }
+    public _oncomplete: EventCallback | null = null;
+    // event handler attribute, per IndexedDB.idl
+    get oncomplete() {
+        return this._oncomplete;
+    }
+    set oncomplete(value: EventCallback | null) {
+        this._oncomplete = value;
+    }
+    public _onerror: EventCallback | null = null;
+    // event handler attribute, per IndexedDB.idl
+    get onerror() {
+        return this._onerror;
+    }
+    set onerror(value: EventCallback | null) {
+        this._onerror = value;
+    }
 
     public _prioritizedListeners = new Map<
         PrioritizedListenerType,
@@ -64,10 +106,10 @@ class FDBTransaction extends FakeEventTarget {
         super();
 
         this._scope = new Set(storeNames);
-        this.mode = mode;
-        this.durability = durability;
-        this.db = db;
-        this.objectStoreNames = new FakeDOMStringList(
+        this._mode = mode;
+        this._durability = durability;
+        this._db = db;
+        this._objectStoreNames = new FakeDOMStringList(
             ...Array.from(this._scope).sort(),
         );
 
@@ -89,13 +131,13 @@ class FDBTransaction extends FakeEventTarget {
 
         if (errName !== null) {
             const e = new DOMException(undefined, errName);
-            this.error = e;
+            this._error = e;
         }
 
         // Should this directly remove from _requests?
         for (const { request } of this._requests) {
             if (request.readyState !== "done") {
-                request.readyState = "done"; // This will cancel execution of this request's operation
+                request._readyState = "done"; // This will cancel execution of this request's operation
                 if (request.source) {
                     // https://w3c.github.io/IndexedDB/#ref-for-list-iterate%E2%91%A2
                     // For each request of transaction’s request list, abort the steps to asynchronously
@@ -103,9 +145,9 @@ class FDBTransaction extends FakeEventTarget {
                     // database task to run these steps:
                     queueTask(() => {
                         // Set request’s result to undefined.
-                        request.result = undefined;
+                        request._result = undefined;
                         // Set request’s error to a newly created "AbortError" DOMException.
-                        request.error = new AbortError();
+                        request._error = new AbortError();
 
                         // Fire an event named error at request with its bubbles and cancelable attributes initialized
                         // to true.
@@ -154,9 +196,9 @@ class FDBTransaction extends FakeEventTarget {
                 // Let request be the open request associated with transaction.
                 const request = this._openRequest!;
                 // Set request’s transaction to null.
-                request.transaction = null;
+                request._transaction = null;
                 // Set request’s result to undefined.
-                request.result = undefined;
+                request._result = undefined;
             }
         });
 
@@ -211,8 +253,8 @@ class FDBTransaction extends FakeEventTarget {
                 request = new FDBRequest();
             } else {
                 request = new FDBRequest();
-                request.source = source;
-                request.transaction = (source as any).transaction;
+                request._source = source;
+                request._transaction = (source as any).transaction;
             }
         }
 
@@ -251,9 +293,9 @@ class FDBTransaction extends FakeEventTarget {
                 let event;
                 try {
                     const result = operation();
-                    request.readyState = "done";
-                    request.result = result;
-                    request.error = undefined;
+                    request._readyState = "done";
+                    request._result = result;
+                    request._error = undefined;
 
                     // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#dfn-fire-a-success-event
                     if (this._state === "inactive") {
@@ -264,9 +306,9 @@ class FDBTransaction extends FakeEventTarget {
                         cancelable: false,
                     });
                 } catch (err) {
-                    request.readyState = "done";
-                    request.result = undefined;
-                    request.error = err;
+                    request._readyState = "done";
+                    request._result = undefined;
+                    request._error = err;
 
                     // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#dfn-fire-an-error-event
                     if (this._state === "inactive") {
@@ -327,5 +369,16 @@ class FDBTransaction extends FakeEventTarget {
         return "IDBTransaction";
     }
 }
+
+// Operation arities come from IndexedDB.idl -- see the `operations` note in
+// lib/webidl.ts for why they cannot be read off the JS functions.
+defineInterface(FDBTransaction, {
+    name: "IDBTransaction",
+    operations: {
+        objectStore: 1,
+        commit: 0,
+        abort: 0,
+    },
+});
 
 export default FDBTransaction;

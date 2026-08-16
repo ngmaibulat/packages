@@ -65,6 +65,37 @@ latent problem rather than a Bun quirk:
   first branch, leaving `idlharness` to die on an undefined `WebIDL2`. The
   wrapper now always publishes the global.
 
+## Conformance
+
+Forked at 1,369 passing W3C web-platform-tests with 144 recorded failures; now
+**1,488 passing with 25**. Nothing was added to the expectation manifests. See
+[CONFORMANCE.md](CONFORMANCE.md) for the remainder and the plan.
+
+- **WebIDL fidelity.** `src/lib/webidl.ts` gives each class the shape its IDL
+  declares, and the attributes moved from instance fields to prototype
+  accessors. Three of these are behavioural, not cosmetic:
+    - **Feature detection worked wrongly.** 37 attributes were own instance
+      properties, so `'durability' in IDBTransaction.prototype` was false.
+    - **Every instance had all eight event-handler names.** `FakeEventTarget`
+      declared `onabort` … `onversionchange` as plain fields, so an `IDBDatabase`
+      answered true to `'onupgradeneeded' in db`. Each interface now defines only
+      its own, on its own prototype.
+    - **Ten readonly attributes had setters** — eight of them no-op
+      `/* for babel */` stubs for a build system this fork does not use — so
+      `cursor.key = x` silently appeared to work.
+      Also: interface objects report their IDL `name` and `length` (it was
+      `FDBRequest`, visible in every stack trace), members are enumerable and
+      brand-checked, and operations report the IDL's required-argument count.
+- **`db.transaction(store, 'versionchange')` throws TypeError**, as the spec
+  requires; it used to succeed and hand back an upgrade transaction. The check
+  is ordered after the scope checks so `NotFoundError` still wins for a missing
+  store, and the upgrade algorithm reaches the same code through an internal
+  door.
+- **`assert_readonly` in the vendored harness was wrong for ES modules.** It
+  assigned and expected the assignment to be discarded, which holds for
+  upstream's classic script but not in strict mode — so once the attributes
+  became genuinely readonly it started reporting correct behaviour as failure.
+
 ## Packaging
 
 - **ESM only.** The CommonJS build under `build/cjs` is gone, along with the

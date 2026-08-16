@@ -93,8 +93,9 @@ function cacheDonePromiseForTransaction(tx: IDBTransaction): void {
     const error = (event: Event) => {
       // A handled error is not going to abort anything, so it must not be
       // remembered as the cause of some later, unrelated abort. Browsers
-      // expose the cancelled flag here during bubbling; fake-indexeddb does
-      // not, which is why `ignoreConstraints` also stops propagation.
+      // expose the cancelled flag here during bubbling; the in-memory
+      // implementation does not, which is why `ignoreConstraints` also stops
+      // propagation.
       if (event.defaultPrevented) return;
       candidateError =
         tx.error ??

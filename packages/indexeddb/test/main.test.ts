@@ -1,4 +1,4 @@
-import 'fake-indexeddb/auto';
+import '@aibulat/indexeddb-impl/auto';
 import { describe as suite, it as test, afterEach } from 'node:test';
 import { assert } from 'chai';
 import {
@@ -113,7 +113,7 @@ suite('IDBPDatabase', () => {
     db = schemaDB as IDBPDatabase;
 
     // Browsers accept a DOMStringList here (WebIDL converts any iterable to
-    // sequence<DOMString>), but fake-indexeddb's FDBDatabase.transaction narrows
+    // sequence<DOMString>), but the implementation's FDBDatabase.transaction narrows
     // with `Array.isArray` and would wrap the list itself into a one-element
     // array. Spreading keeps this runnable in Node. No coverage is lost: that
     // transaction() accepts an ArrayLike is asserted in 'transaction' above.

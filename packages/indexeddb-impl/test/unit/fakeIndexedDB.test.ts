@@ -1101,7 +1101,9 @@ describe("fakeIndexedDB Tests", () => {
                 objectStore.put({ id: 3, val: "c" });
                 throw new Error("boom");
             });
-            req.onerror = () => resolve(req.error);
+            // req.error is `Error | null | undefined` now that the readonly
+            // attribute no longer has an `any`-typed setter widening it.
+            req.onerror = () => resolve(req.error!);
             req.onsuccess = () => reject(new Error("Unexpected success!"));
         });
 

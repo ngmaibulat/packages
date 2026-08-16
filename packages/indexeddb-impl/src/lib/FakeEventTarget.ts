@@ -75,7 +75,16 @@ const invokeEventListeners = (event: FakeEvent, obj: FakeEventTarget) => {
         throw new Error(`Unknown event type: "${event.type}"`);
     }
 
-    const callback = event.currentTarget[prop];
+    // Each interface defines accessors for the handlers its own IDL declares,
+    // so the base cannot usefully type all eight -- declaring them here as
+    // fields is what used to give every instance all eight as own properties,
+    // shadowing those accessors.
+    const callback = (
+        event.currentTarget as unknown as Record<
+            EventTypeProp,
+            EventCallback | null | undefined
+        >
+    )[prop];
     if (callback) {
         const listener = {
             callback,
@@ -96,16 +105,6 @@ const invokeEventListeners = (event: FakeEvent, obj: FakeEventTarget) => {
 
 abstract class FakeEventTarget {
     public readonly listeners: Listener[] = [];
-
-    // These will be overridden in individual subclasses and made not readonly
-    public readonly onabort: EventCallback | null | undefined;
-    public readonly onblocked: EventCallback | null | undefined;
-    public readonly onclose: EventCallback | null | undefined;
-    public readonly oncomplete: EventCallback | null | undefined;
-    public readonly onerror: EventCallback | null | undefined;
-    public readonly onsuccess: EventCallback | null | undefined;
-    public readonly onupgradeneeded: EventCallback | null | undefined;
-    public readonly onversionchange: EventCallback | null | undefined;
 
     public addEventListener(
         type: EventType,

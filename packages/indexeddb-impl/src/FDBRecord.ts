@@ -1,4 +1,5 @@
 import type { Key } from "./lib/types.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 class FDBRecord {
     private _key: Key;
@@ -15,29 +16,19 @@ class FDBRecord {
         return this._key;
     }
 
-    set key(_) {
-        /* for babel */
-    }
-
     get primaryKey() {
         return this._primaryKey;
-    }
-
-    set primaryKey(_) {
-        /* for babel */
     }
 
     get value() {
         return this._value;
     }
 
-    set value(_) {
-        /* for babel */
-    }
-
     get [Symbol.toStringTag]() {
         return "IDBRecord";
     }
 }
+
+defineInterface(FDBRecord, { name: "IDBRecord" });
 
 export default FDBRecord;

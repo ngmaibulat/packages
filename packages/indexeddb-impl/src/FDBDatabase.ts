@@ -17,6 +17,8 @@ import type {
     TransactionMode,
 } from "./lib/types.ts";
 import type Database from "./lib/Database.ts";
+import type { EventCallback } from "./lib/types.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 // Common first 3 steps of https://www.w3.org/TR/IndexedDB/#dom-idbdatabase-createobjectstore and https://www.w3.org/TR/IndexedDB/#dom-idbdatabase-deleteobjectstore
 const confirmActiveVersionchangeTransaction = (database: FDBDatabase) => {
@@ -48,9 +50,54 @@ class FDBDatabase extends FakeEventTarget {
     public _oldVersion: number | undefined;
     public _rawDatabase: Database;
 
-    public name: string;
-    public version: number;
-    public objectStoreNames: FakeDOMStringList;
+    public _name: string;
+    // readonly attribute, per IndexedDB.idl
+    get name() {
+        return this._name;
+    }
+    public _version: number;
+    // readonly attribute, per IndexedDB.idl
+    get version() {
+        return this._version;
+    }
+    public _objectStoreNames: FakeDOMStringList;
+
+    // Event handler attributes, per IndexedDB.idl. Previously inherited as
+    // plain fields from FakeEventTarget, which gave every connection all eight
+    // handler names -- including onsuccess and onupgradeneeded, which are not
+    // IDBDatabase attributes at all.
+    public _onabort: EventCallback | null = null;
+    get onabort() {
+        return this._onabort;
+    }
+    set onabort(value: EventCallback | null) {
+        this._onabort = value;
+    }
+    public _onclose: EventCallback | null = null;
+    get onclose() {
+        return this._onclose;
+    }
+    set onclose(value: EventCallback | null) {
+        this._onclose = value;
+    }
+    public _onerror: EventCallback | null = null;
+    get onerror() {
+        return this._onerror;
+    }
+    set onerror(value: EventCallback | null) {
+        this._onerror = value;
+    }
+    public _onversionchange: EventCallback | null = null;
+    get onversionchange() {
+        return this._onversionchange;
+    }
+    set onversionchange(value: EventCallback | null) {
+        this._onversionchange = value;
+    }
+    // readonly attribute, per IndexedDB.idl
+    get objectStoreNames() {
+        return this._objectStoreNames;
+    }
 
     constructor(rawDatabase: Database) {
         super();
@@ -58,9 +105,9 @@ class FDBDatabase extends FakeEventTarget {
         this._rawDatabase = rawDatabase;
         this._rawDatabase.connections.push(this);
 
-        this.name = rawDatabase.name;
-        this.version = rawDatabase.version;
-        this.objectStoreNames = new FakeDOMStringList(
+        this._name = rawDatabase.name;
+        this._version = rawDatabase.version;
+        this._objectStoreNames = new FakeDOMStringList(
             ...Array.from(rawDatabase.rawObjectStores.keys()).sort(),
         );
     }
@@ -111,15 +158,15 @@ class FDBDatabase extends FakeEventTarget {
         transaction._scope.add(name);
         transaction._createdObjectStores.add(rawObjectStore);
         this._rawDatabase.rawObjectStores.set(name, rawObjectStore);
-        transaction.objectStoreNames = new FakeDOMStringList(
+        transaction._objectStoreNames = new FakeDOMStringList(
             ...this.objectStoreNames,
         );
 
         transaction._rollbackLog.push(() => {
             rawObjectStore.deleted = true;
 
-            this.objectStoreNames = new FakeDOMStringList(...objectStoreNames);
-            transaction.objectStoreNames = new FakeDOMStringList(
+            this._objectStoreNames = new FakeDOMStringList(...objectStoreNames);
+            transaction._objectStoreNames = new FakeDOMStringList(
                 ...transactionObjectStoreNames,
             );
 
@@ -145,12 +192,12 @@ class FDBDatabase extends FakeEventTarget {
 
         // Remove store from this’s object store set.
         // This method synchronously modifies the objectStoreNames property on the IDBDatabase instance on which it was called.
-        this.objectStoreNames = new FakeDOMStringList(
+        this._objectStoreNames = new FakeDOMStringList(
             ...Array.from(this.objectStoreNames).filter((objectStoreName) => {
                 return objectStoreName !== name;
             }),
         );
-        transaction.objectStoreNames = new FakeDOMStringList(
+        transaction._objectStoreNames = new FakeDOMStringList(
             ...this.objectStoreNames,
         );
 
@@ -159,7 +206,7 @@ class FDBDatabase extends FakeEventTarget {
         let prevIndexNames: string[] | undefined;
         if (objectStore) {
             prevIndexNames = [...objectStore.indexNames];
-            objectStore.indexNames = new FakeDOMStringList();
+            objectStore._indexNames = new FakeDOMStringList();
         }
 
         transaction._rollbackLog.push(() => {
@@ -170,7 +217,7 @@ class FDBDatabase extends FakeEventTarget {
             this.objectStoreNames._sort();
 
             if (objectStore && prevIndexNames) {
-                objectStore.indexNames = new FakeDOMStringList(
+                objectStore._indexNames = new FakeDOMStringList(
                     ...prevIndexNames,
                 );
             }
@@ -182,12 +229,18 @@ class FDBDatabase extends FakeEventTarget {
         transaction._objectStoresCache.delete(name);
     }
 
+    // https://w3c.github.io/IndexedDB/#dom-idbdatabase-transaction
     public transaction(
         storeNames: string | string[],
         mode?: TransactionMode,
         options?: FDBTransactionOptions,
     ) {
         mode = mode !== undefined ? mode : "readonly";
+
+        // WebIDL enum conversion happens before the algorithm runs, so a string
+        // that is not an IDBTransactionMode at all fails here. "versionchange"
+        // IS a member of that enum, so it survives conversion and is rejected
+        // later instead -- see the step-6 check in _transaction().
         if (
             mode !== "readonly" &&
             mode !== "readwrite" &&
@@ -196,6 +249,26 @@ class FDBDatabase extends FakeEventTarget {
             throw new TypeError("Invalid mode: " + mode);
         }
 
+        return this._transaction(storeNames, mode, options, false);
+    }
+
+    /**
+     * The upgrade algorithm's way in.
+     *
+     * `transaction()` must reject a "versionchange" mode, but the upgrade
+     * itself runs in exactly such a transaction, so it needs a door that check
+     * does not close. See "upgrade a database" in the spec, and FDBFactory.
+     */
+    public _versionchangeTransaction(storeNames: string[]) {
+        return this._transaction(storeNames, "versionchange", undefined, true);
+    }
+
+    private _transaction(
+        storeNames: string | string[],
+        mode: TransactionMode,
+        options: FDBTransactionOptions | undefined,
+        internalVersionchange: boolean,
+    ) {
         const hasActiveVersionchange = this._rawDatabase.transactions.some(
             (transaction) => {
                 return (
@@ -225,6 +298,23 @@ class FDBDatabase extends FakeEventTarget {
                     "No objectStore named " + storeName + " in this database",
                 );
             }
+        }
+
+        // Step 6: only "readonly" and "readwrite" are allowed here.
+        //
+        // This sits *after* the scope checks on purpose. WPT's
+        // "IDBDatabase.transaction exception order: NotFoundError vs. TypeError"
+        // calls transaction('no-such-store', 'versionchange') and requires
+        // NotFoundError, so hoisting this any earlier trades one failing test
+        // for another.
+        if (
+            !internalVersionchange &&
+            mode !== "readonly" &&
+            mode !== "readwrite"
+        ) {
+            throw new TypeError(
+                `'${mode}' is not a valid mode for IDBDatabase.transaction`,
+            );
         }
 
         // the actual algo is more complex but this passes the IDB tests: https://webidl.spec.whatwg.org/#es-dictionary
@@ -257,5 +347,17 @@ class FDBDatabase extends FakeEventTarget {
         return "IDBDatabase";
     }
 }
+
+// Operation arities come from IndexedDB.idl -- see the `operations` note in
+// lib/webidl.ts for why they cannot be read off the JS functions.
+defineInterface(FDBDatabase, {
+    name: "IDBDatabase",
+    operations: {
+        transaction: 1,
+        close: 0,
+        createObjectStore: 1,
+        deleteObjectStore: 1,
+    },
+});
 
 export default FDBDatabase;

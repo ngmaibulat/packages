@@ -32,6 +32,7 @@ import type {
 } from "./lib/types.ts";
 import type ObjectStore from "./lib/ObjectStore.ts";
 import type FDBTransaction from "./FDBTransaction.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 const confirmActiveTransaction = (objectStore: FDBObjectStore) => {
     if (objectStore._rawObjectStore.deleted) {
@@ -99,10 +100,26 @@ class FDBObjectStore {
     public _rawObjectStore: ObjectStore;
     public _indexesCache: Map<string, FDBIndex> = new Map();
 
-    public keyPath: KeyPath | null;
-    public autoIncrement: boolean;
-    public transaction: FDBTransaction;
-    public indexNames: FakeDOMStringList;
+    public _keyPath: KeyPath | null;
+    // readonly attribute, per IndexedDB.idl
+    get keyPath() {
+        return this._keyPath;
+    }
+    public _autoIncrement: boolean;
+    // readonly attribute, per IndexedDB.idl
+    get autoIncrement() {
+        return this._autoIncrement;
+    }
+    public _transaction: FDBTransaction;
+    // readonly attribute, per IndexedDB.idl
+    get transaction() {
+        return this._transaction;
+    }
+    public _indexNames: FakeDOMStringList;
+    // readonly attribute, per IndexedDB.idl
+    get indexNames() {
+        return this._indexNames;
+    }
 
     private _name: string;
 
@@ -110,10 +127,10 @@ class FDBObjectStore {
         this._rawObjectStore = rawObjectStore;
 
         this._name = rawObjectStore.name;
-        this.keyPath = getKeyPath(rawObjectStore.keyPath);
-        this.autoIncrement = rawObjectStore.autoIncrement;
-        this.transaction = transaction;
-        this.indexNames = new FakeDOMStringList(
+        this._keyPath = getKeyPath(rawObjectStore.keyPath);
+        this._autoIncrement = rawObjectStore.autoIncrement;
+        this._transaction = transaction;
+        this._indexNames = new FakeDOMStringList(
             ...Array.from(rawObjectStore.rawIndexes.keys()).sort(),
         );
     }
@@ -156,7 +173,7 @@ class FDBObjectStore {
             name,
             this._rawObjectStore,
         );
-        transaction.db.objectStoreNames = new FakeDOMStringList(
+        transaction.db._objectStoreNames = new FakeDOMStringList(
             ...Array.from(
                 this._rawObjectStore.rawDatabase.rawObjectStores.keys(),
             )
@@ -176,7 +193,7 @@ class FDBObjectStore {
         ];
         this.transaction._scope.delete(oldName);
         transaction._scope.add(name);
-        transaction.objectStoreNames = new FakeDOMStringList(
+        transaction._objectStoreNames = new FakeDOMStringList(
             ...Array.from(transaction._scope).sort(),
         );
 
@@ -192,12 +209,12 @@ class FDBObjectStore {
                     oldName,
                     this._rawObjectStore,
                 );
-                transaction.db.objectStoreNames = new FakeDOMStringList(
+                transaction.db._objectStoreNames = new FakeDOMStringList(
                     ...oldObjectStoreNames,
                 );
 
                 transaction._scope = oldScope;
-                transaction.objectStoreNames = new FakeDOMStringList(
+                transaction._objectStoreNames = new FakeDOMStringList(
                     ...oldTransactionObjectStoreNames,
                 );
             });
@@ -418,8 +435,8 @@ class FDBObjectStore {
         }
 
         const request = new FDBRequest();
-        request.source = this;
-        request.transaction = this.transaction;
+        request._source = this;
+        request._transaction = this.transaction;
 
         const cursor = new FDBCursorWithValue(this, range, direction, request);
 
@@ -444,8 +461,8 @@ class FDBObjectStore {
         }
 
         const request = new FDBRequest();
-        request.source = this;
-        request.transaction = this.transaction;
+        request._source = this;
+        request._transaction = this.transaction;
 
         const cursor = new FDBCursor(this, range, direction, request, true);
 
@@ -518,7 +535,7 @@ class FDBObjectStore {
 
         this.transaction._rollbackLog.push(() => {
             index.deleted = true;
-            this.indexNames = new FakeDOMStringList(...indexNames);
+            this._indexNames = new FakeDOMStringList(...indexNames);
             this._rawObjectStore.rawIndexes.delete(index.name);
         });
 
@@ -577,7 +594,7 @@ class FDBObjectStore {
             this.indexNames._sort();
         });
 
-        this.indexNames = new FakeDOMStringList(
+        this._indexNames = new FakeDOMStringList(
             ...Array.from(this.indexNames).filter((indexName) => {
                 return indexName !== name;
             }),
@@ -621,5 +638,28 @@ class FDBObjectStore {
         return "IDBObjectStore";
     }
 }
+
+// Operation arities come from IndexedDB.idl -- see the `operations` note in
+// lib/webidl.ts for why they cannot be read off the JS functions.
+defineInterface(FDBObjectStore, {
+    name: "IDBObjectStore",
+    operations: {
+        put: 1,
+        add: 1,
+        delete: 1,
+        clear: 0,
+        get: 1,
+        getKey: 1,
+        getAll: 0,
+        getAllKeys: 0,
+        getAllRecords: 0,
+        count: 0,
+        openCursor: 0,
+        openKeyCursor: 0,
+        index: 1,
+        createIndex: 2,
+        deleteIndex: 1,
+    },
+});
 
 export default FDBObjectStore;

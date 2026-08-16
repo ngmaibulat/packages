@@ -17,7 +17,18 @@ const __dirname = import.meta.dirname;
 const testFolder = path.join(__dirname, "converted");
 const manifestsFolder = path.join(__dirname, "manifests");
 
-const nodeMajorVersion = parseInt(process.version.substring(1).split(".")[0]);
+// Which runtime we are on, for the per-runtime manifest overrides below.
+//
+// Upstream keyed these on `node${major}` from process.version. Bun reports a
+// *Node* version there (v24 at the time of writing) that says nothing about
+// Bun's own behaviour, so on Bun that key would silently select a Node
+// override -- or, once a node24 directory existed, apply Node's expectations to
+// Bun. Both runtimes currently agree and no overrides exist; if one ever
+// diverges, prefer fixing it over recording it here.
+const runtimeKey =
+    typeof globalThis.Bun !== "undefined"
+        ? `bun${globalThis.Bun.version.split(".")[0]}`
+        : `node${parseInt(process.version.substring(1).split(".")[0])}`;
 
 const filenames = glob.sync("/**/*.js", { root: testFolder });
 
@@ -58,7 +69,7 @@ for (const absFilename of filenames) {
     // if any tests are failing only in older node versions, they go in the override
     const overrideManifestFilename = path.join(
         manifestsFolder,
-        `overrides/node${nodeMajorVersion}`,
+        `overrides/${runtimeKey}`,
         manifestBasename,
     );
     const expectedManifest = fs.existsSync(overrideManifestFilename)

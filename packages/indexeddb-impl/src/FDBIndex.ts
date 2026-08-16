@@ -21,6 +21,7 @@ import type {
 } from "./lib/types.ts";
 import type Index from "./lib/Index.ts";
 import type FDBObjectStore from "./FDBObjectStore.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 const confirmActiveTransaction = (index: FDBIndex) => {
     if (index._rawIndex.deleted || index.objectStore._rawObjectStore.deleted) {
@@ -35,10 +36,26 @@ const confirmActiveTransaction = (index: FDBIndex) => {
 // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#idl-def-IDBIndex
 class FDBIndex {
     public _rawIndex: Index;
-    public objectStore: FDBObjectStore;
-    public keyPath: KeyPath;
-    public multiEntry: boolean;
-    public unique: boolean;
+    public _objectStore: FDBObjectStore;
+    // readonly attribute, per IndexedDB.idl
+    get objectStore() {
+        return this._objectStore;
+    }
+    public _keyPath: KeyPath;
+    // readonly attribute, per IndexedDB.idl
+    get keyPath() {
+        return this._keyPath;
+    }
+    public _multiEntry: boolean;
+    // readonly attribute, per IndexedDB.idl
+    get multiEntry() {
+        return this._multiEntry;
+    }
+    public _unique: boolean;
+    // readonly attribute, per IndexedDB.idl
+    get unique() {
+        return this._unique;
+    }
 
     private _name: string;
 
@@ -46,10 +63,10 @@ class FDBIndex {
         this._rawIndex = rawIndex;
 
         this._name = rawIndex.name;
-        this.objectStore = objectStore;
-        this.keyPath = getKeyPath(rawIndex.keyPath);
-        this.multiEntry = rawIndex.multiEntry;
-        this.unique = rawIndex.unique;
+        this._objectStore = objectStore;
+        this._keyPath = getKeyPath(rawIndex.keyPath);
+        this._multiEntry = rawIndex.multiEntry;
+        this._unique = rawIndex.unique;
     }
 
     get name() {
@@ -96,7 +113,7 @@ class FDBIndex {
         this.objectStore._indexesCache.set(name, this);
         this.objectStore._rawObjectStore.rawIndexes.delete(oldName);
         this.objectStore._rawObjectStore.rawIndexes.set(name, this._rawIndex);
-        this.objectStore.indexNames = new FakeDOMStringList(
+        this.objectStore._indexNames = new FakeDOMStringList(
             ...Array.from(this.objectStore._rawObjectStore.rawIndexes.keys())
                 .filter((indexName) => {
                     const index =
@@ -120,7 +137,7 @@ class FDBIndex {
                     oldName,
                     this._rawIndex,
                 );
-                this.objectStore.indexNames = new FakeDOMStringList(
+                this.objectStore._indexNames = new FakeDOMStringList(
                     ...oldIndexNames,
                 );
             });
@@ -142,8 +159,8 @@ class FDBIndex {
         }
 
         const request = new FDBRequest();
-        request.source = this;
-        request.transaction = this.objectStore.transaction;
+        request._source = this;
+        request._transaction = this.objectStore.transaction;
 
         const cursor = new FDBCursorWithValue(this, range, direction, request);
 
@@ -169,8 +186,8 @@ class FDBIndex {
         }
 
         const request = new FDBRequest();
-        request.source = this;
-        request.transaction = this.objectStore.transaction;
+        request._source = this;
+        request._transaction = this.objectStore.transaction;
 
         const cursor = new FDBCursor(this, range, direction, request, true);
 
@@ -316,5 +333,21 @@ class FDBIndex {
         return "IDBIndex";
     }
 }
+
+// Operation arities come from IndexedDB.idl -- see the `operations` note in
+// lib/webidl.ts for why they cannot be read off the JS functions.
+defineInterface(FDBIndex, {
+    name: "IDBIndex",
+    operations: {
+        get: 1,
+        getKey: 1,
+        getAll: 0,
+        getAllKeys: 0,
+        getAllRecords: 0,
+        count: 0,
+        openCursor: 0,
+        openKeyCursor: 0,
+    },
+});
 
 export default FDBIndex;

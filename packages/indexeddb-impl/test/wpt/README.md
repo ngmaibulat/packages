@@ -5,14 +5,14 @@ These tests come from [web-platform-tests](https://github.com/w3c/web-platform-t
 To run all the tests:
 
 ```sh
-pnpm run test-w3c
+pnpm run test:wpt
 ```
 
 To run a subset of the tests:
 
 ```sh
 node --test --test-name-pattern="name of test" \
-    ./src/test/web-platform-tests/run-all.js
+    ./test/wpt.test.ts
 ```
 
 ## Updating test expectations
@@ -24,10 +24,10 @@ Currently `skip = true` means the file is completely irrelevant (like ones using
 To update all the manifest files at once based on the current test results, run:
 
 ```sh
-GENERATE_MANIFESTS=1 pnpm run test-w3c
+GENERATE_MANIFESTS=1 pnpm run test:wpt
 ```
 
-If the test results vary by Node version, you can add files in `overrides/node<version>` which will override the default.
+If results ever differ between runtimes you can add files under `overrides/<runtime>` (`node26`, `bun1`, ...) to override the defaults — but prefer fixing the difference. Node and Bun currently agree exactly, and that agreement is the signal; there are no overrides.
 
 ## Updating the tests
 

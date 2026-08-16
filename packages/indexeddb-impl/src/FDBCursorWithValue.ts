@@ -5,9 +5,14 @@ import type {
     FDBCursorDirection,
     Value,
 } from "./lib/types.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 class FDBCursorWithValue extends FDBCursor {
-    public value: Value = undefined;
+    public _value: Value = undefined;
+    // readonly attribute, per IndexedDB.idl
+    get value() {
+        return this._value;
+    }
 
     constructor(
         source: CursorSource,
@@ -22,5 +27,7 @@ class FDBCursorWithValue extends FDBCursor {
         return "IDBCursorWithValue";
     }
 }
+
+defineInterface(FDBCursorWithValue, { name: "IDBCursorWithValue" });
 
 export default FDBCursorWithValue;

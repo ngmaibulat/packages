@@ -19,6 +19,7 @@ import type {
     Value,
 } from "./lib/types.ts";
 import type FDBRequest from "./FDBRequest.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 const getEffectiveObjectStore = (cursor: FDBCursor) => {
     if (cursor.source instanceof FDBObjectStore) {
@@ -104,36 +105,21 @@ class FDBCursor {
     get source() {
         return this._source;
     }
-    set source(val) {
-        /* For babel */
-    }
 
     get request() {
         return this._request;
-    }
-    set request(val) {
-        /* For babel */
     }
 
     get direction() {
         return this._direction;
     }
-    set direction(val) {
-        /* For babel */
-    }
 
     get key() {
         return this._key;
     }
-    set key(val) {
-        /* For babel */
-    }
 
     get primaryKey() {
         return this._primaryKey;
-    }
-    set primaryKey(val) {
-        /* For babel */
     }
 
     // https://w3c.github.io/IndexedDB/#iterate-a-cursor
@@ -312,7 +298,7 @@ class FDBCursor {
                 !this._keyOnly &&
                 this.toString() === "[object IDBCursorWithValue]"
             ) {
-                (this as any).value = undefined;
+                (this as any)._value = undefined;
             }
             result = null;
         } else {
@@ -327,7 +313,7 @@ class FDBCursor {
                     !this._keyOnly &&
                     this.toString() === "[object IDBCursorWithValue]"
                 ) {
-                    (this as any).value = structuredClone(foundRecord.value);
+                    (this as any)._value = structuredClone(foundRecord.value);
                 }
             } else {
                 this._primaryKey = structuredClone(foundRecord.value);
@@ -343,7 +329,7 @@ class FDBCursor {
                         this.source.objectStore._rawObjectStore.getValue(
                             foundRecord.value,
                         );
-                    (this as any).value = structuredClone(value);
+                    (this as any)._value = structuredClone(value);
                 }
             }
             this._gotValue = true;
@@ -384,7 +370,10 @@ class FDBCursor {
             throw new InvalidStateError();
         }
 
-        if (!this._gotValue || !Object.hasOwn(this, "value")) {
+        // `"value" in this` rather than Object.hasOwn: the question is "is this
+        // a value cursor", and since `value` became a prototype accessor on
+        // FDBCursorWithValue (per WebIDL) it is no longer an own property.
+        if (!this._gotValue || !("value" in this)) {
             throw new InvalidStateError();
         }
 
@@ -448,7 +437,7 @@ class FDBCursor {
         }
 
         if (this._request) {
-            this._request.readyState = "pending";
+            this._request._readyState = "pending";
         }
         transaction._execRequestAsync({
             operation: () => {
@@ -511,7 +500,7 @@ class FDBCursor {
         }
 
         if (this._request) {
-            this._request.readyState = "pending";
+            this._request._readyState = "pending";
         }
         transaction._execRequestAsync({
             operation: this._iterate.bind(this, key),
@@ -577,7 +566,7 @@ class FDBCursor {
         }
 
         if (this._request) {
-            this._request.readyState = "pending";
+            this._request._readyState = "pending";
         }
         transaction._execRequestAsync({
             operation: this._iterate.bind(this, key, primaryKey),
@@ -613,7 +602,10 @@ class FDBCursor {
             throw new InvalidStateError();
         }
 
-        if (!this._gotValue || !Object.hasOwn(this, "value")) {
+        // `"value" in this` rather than Object.hasOwn: the question is "is this
+        // a value cursor", and since `value` became a prototype accessor on
+        // FDBCursorWithValue (per WebIDL) it is no longer an own property.
+        if (!this._gotValue || !("value" in this)) {
             throw new InvalidStateError();
         }
 
@@ -631,5 +623,18 @@ class FDBCursor {
         return "IDBCursor";
     }
 }
+
+// Operation arities come from IndexedDB.idl -- see the `operations` note in
+// lib/webidl.ts for why they cannot be read off the JS functions.
+defineInterface(FDBCursor, {
+    name: "IDBCursor",
+    operations: {
+        advance: 1,
+        continue: 0,
+        continuePrimaryKey: 2,
+        update: 1,
+        delete: 0,
+    },
+});
 
 export default FDBCursor;

@@ -2,6 +2,7 @@ import { cmpKeys } from "./lib/cmp.ts";
 import { DataError } from "./lib/errors.ts";
 import valueToKey from "./lib/valueToKey.ts";
 import type { Key } from "./lib/types.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#range-concept
 class FDBKeyRange {
@@ -49,10 +50,26 @@ class FDBKeyRange {
         return new FDBKeyRange(lower, upper, lowerOpen, upperOpen);
     }
 
-    public readonly lower: Key | undefined;
-    public readonly upper: Key | undefined;
-    public readonly lowerOpen: boolean;
-    public readonly upperOpen: boolean;
+    public _lower: Key | undefined;
+    // readonly attribute, per IndexedDB.idl
+    get lower() {
+        return this._lower;
+    }
+    public _upper: Key | undefined;
+    // readonly attribute, per IndexedDB.idl
+    get upper() {
+        return this._upper;
+    }
+    public _lowerOpen: boolean;
+    // readonly attribute, per IndexedDB.idl
+    get lowerOpen() {
+        return this._lowerOpen;
+    }
+    public _upperOpen: boolean;
+    // readonly attribute, per IndexedDB.idl
+    get upperOpen() {
+        return this._upperOpen;
+    }
 
     constructor(
         lower: Key | undefined,
@@ -60,10 +77,10 @@ class FDBKeyRange {
         lowerOpen: boolean,
         upperOpen: boolean,
     ) {
-        this.lower = lower;
-        this.upper = upper;
-        this.lowerOpen = lowerOpen;
-        this.upperOpen = upperOpen;
+        this._lower = lower;
+        this._upper = upper;
+        this._lowerOpen = lowerOpen;
+        this._upperOpen = upperOpen;
     }
 
     // https://w3c.github.io/IndexedDB/#dom-idbkeyrange-includes
@@ -94,5 +111,18 @@ class FDBKeyRange {
         return "IDBKeyRange";
     }
 }
+
+// Operation arities come from IndexedDB.idl -- see the `operations` note in
+// lib/webidl.ts for why they cannot be read off the JS functions.
+defineInterface(FDBKeyRange, {
+    name: "IDBKeyRange",
+    operations: {
+        only: 1,
+        lowerBound: 1,
+        upperBound: 1,
+        bound: 2,
+        includes: 1,
+    },
+});
 
 export default FDBKeyRange;

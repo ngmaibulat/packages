@@ -120,3 +120,40 @@ jobs:
                     if (typeof gh.GithubApi !== 'function') throw new Error('GithubApi missing from dist');
                     if (core.HttpError !== gh.HttpError) throw new Error('HttpError identity split across subpath bundles');
                   "
+
+    bun:
+        # @aibulat/indexeddb-impl is an implementation of a browser API, and the
+        # two runtimes it claims to support have to be checked separately: every
+        # Bun-specific defect found so far was a latent bug that Node's semantics
+        # happened to hide (a nested test() the other runner tolerates, a
+        # readonly Blob accessor, a UMD header that resolves differently, and a
+        # side-effect import that cannot re-run in a shared process).
+        #
+        # The pass/skip/fail totals must match the Node job exactly. A divergence
+        # is the finding, which is why there are no per-runtime manifest
+        # overrides to absorb one.
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: pnpm/action-setup@v6
+
+            # pnpm still installs the workspace; bun is only the test runner here.
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: 26
+                  cache: pnpm
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - run: pnpm install --frozen-lockfile
+
+            # dist/ is gitignored, and @aibulat/indexeddb resolves the
+            # implementation through its exports map into dist/.
+            - run: pnpm run build
+
+            - run: pnpm --filter @aibulat/indexeddb-impl run test:bun

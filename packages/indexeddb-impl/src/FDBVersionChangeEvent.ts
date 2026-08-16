@@ -1,8 +1,17 @@
 import FakeEvent from "./lib/FakeEvent.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 class FDBVersionChangeEvent extends FakeEvent {
-    public newVersion: number | null;
-    public oldVersion: number;
+    public _newVersion: number | null;
+    // readonly attribute, per IndexedDB.idl
+    get newVersion() {
+        return this._newVersion;
+    }
+    public _oldVersion: number;
+    // readonly attribute, per IndexedDB.idl
+    get oldVersion() {
+        return this._oldVersion;
+    }
 
     constructor(
         type: "blocked" | "success" | "upgradeneeded" | "versionchange",
@@ -10,9 +19,9 @@ class FDBVersionChangeEvent extends FakeEvent {
     ) {
         super(type);
 
-        this.newVersion =
+        this._newVersion =
             parameters.newVersion !== undefined ? parameters.newVersion : null;
-        this.oldVersion =
+        this._oldVersion =
             parameters.oldVersion !== undefined ? parameters.oldVersion : 0;
     }
 
@@ -20,5 +29,10 @@ class FDBVersionChangeEvent extends FakeEvent {
         return "IDBVersionChangeEvent";
     }
 }
+
+defineInterface(FDBVersionChangeEvent, {
+    name: "IDBVersionChangeEvent",
+    length: 1,
+});
 
 export default FDBVersionChangeEvent;

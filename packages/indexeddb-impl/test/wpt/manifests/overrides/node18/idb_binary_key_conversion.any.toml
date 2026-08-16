@@ -1,3 +1,0 @@
-# This breaks in Node <22 because of lack of support for `ArrayBuffer.prototype.detached`
-["Empty ArrayBuffer"]
-expectation = "FAIL"

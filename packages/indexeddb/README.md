@@ -568,10 +568,10 @@ This package lives in the [`@aibulat/packages`](https://github.com/ngmaibulat/pa
 pnpm run build       # tsdown -> dist/, plus publint and attw
 pnpm run dev         # tsdown --watch
 pnpm run typecheck   # both the src and test projects
-pnpm run test        # node:test against fake-indexeddb
+pnpm run test        # node:test against @aibulat/indexeddb-impl
 ```
 
-The suite is 117 tests over `node:test`, run against [`fake-indexeddb`](https://www.npmjs.com/package/fake-indexeddb) rather than a real browser, so it needs no web server and runs in CI. Roughly half the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
+The suite is 117 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Roughly half the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
 
 Run a single file or a single test:
 
@@ -580,4 +580,4 @@ node --test test/open.test.ts
 node --test --test-name-pattern="upgrade" test/open.test.ts
 ```
 
-Because fake-indexeddb is a reimplementation rather than a real engine, it can differ from browsers at the edges — two tests carry comments where they had to be adjusted for it. Worth a manual browser check against `dist/index.js` before releasing anything behaviourally risky.
+Because `@aibulat/indexeddb-impl` is a reimplementation rather than a real engine, it can differ from browsers at the edges — two tests carry comments where they had to be adjusted for it. Worth a manual browser check against `dist/index.js` before releasing anything behaviourally risky.

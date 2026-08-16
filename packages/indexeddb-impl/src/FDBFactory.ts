@@ -9,6 +9,7 @@ import FakeEvent from "./lib/FakeEvent.ts";
 import { queueTask } from "./lib/scheduling.ts";
 import { validateRequiredArguments } from "./lib/validateRequiredArguments.ts";
 import type { FDBDatabaseInfo } from "./lib/types.ts";
+import { defineInterface } from "./lib/webidl.ts";
 
 // https://w3c.github.io/IndexedDB/#connection-queue
 const runTaskInConnectionQueue = (
@@ -204,12 +205,11 @@ const runVersionchangeTransaction = (
             // Set the version of database to version. This change is considered part of the transaction, and so if the
             // transaction is aborted, this change is reverted.
             connection._rawDatabase.version = version;
-            connection.version = version;
+            connection._version = version;
 
             // Get rid of this setImmediate?
-            const transaction = connection.transaction(
+            const transaction = connection._versionchangeTransaction(
                 Array.from(connection.objectStoreNames),
-                "versionchange",
             );
 
             // associate the transaction with the open request for later lookup
@@ -217,15 +217,15 @@ const runVersionchangeTransaction = (
 
             // https://w3c.github.io/IndexedDB/#upgrade-a-database
             // Set request’s result to connection.
-            request.result = connection;
+            request._result = connection;
             // Set request’s done flag to true.
-            request.readyState = "done";
+            request._readyState = "done";
             // Set request’s transaction to transaction.
-            request.transaction = transaction;
+            request._transaction = transaction;
 
             transaction._rollbackLog.push(() => {
                 connection._rawDatabase.version = oldVersion;
-                connection.version = oldVersion;
+                connection._version = oldVersion;
             });
 
             // Set transaction’s state to active.
@@ -276,7 +276,7 @@ const runVersionchangeTransaction = (
                 connection._oldVersion = undefined;
                 queueTask(() => {
                     // Reset transaction in a tick after onabort (upgrade-transaction-lifecycle-user-aborted.any)
-                    request.transaction = null;
+                    request._transaction = null;
                     cb(new AbortError());
                 });
             });
@@ -286,7 +286,7 @@ const runVersionchangeTransaction = (
                 // Let other complete event handlers run before continuing
                 queueTask(() => {
                     // Reset transaction in a tick after oncomplete (upgrade-transaction-lifecycle-committed.any.js)
-                    request.transaction = null;
+                    request._transaction = null;
                     if (connection._closePending) {
                         cb(new AbortError());
                     } else {
@@ -387,7 +387,7 @@ class FDBFactory {
         );
 
         const request = new FDBOpenDBRequest();
-        request.source = null;
+        request._source = null;
 
         queueTask(() => {
             deleteDatabase(
@@ -397,8 +397,11 @@ class FDBFactory {
                 request,
                 (err, oldVersion) => {
                     if (err) {
-                        request.error = new DOMException(err.message, err.name);
-                        request.readyState = "done";
+                        request._error = new DOMException(
+                            err.message,
+                            err.name,
+                        );
+                        request._readyState = "done";
 
                         const event = new FakeEvent("error", {
                             bubbles: true,
@@ -410,8 +413,8 @@ class FDBFactory {
                         return;
                     }
 
-                    request.result = undefined;
-                    request.readyState = "done";
+                    request._result = undefined;
+                    request._readyState = "done";
 
                     const event2 = new FDBVersionChangeEvent("success", {
                         newVersion: null,
@@ -439,7 +442,7 @@ class FDBFactory {
         }
 
         const request = new FDBOpenDBRequest();
-        request.source = null;
+        request._source = null;
 
         queueTask(() => {
             openDatabase(
@@ -450,10 +453,13 @@ class FDBFactory {
                 request,
                 (err, connection) => {
                     if (err) {
-                        request.result = undefined;
-                        request.readyState = "done";
+                        request._result = undefined;
+                        request._readyState = "done";
 
-                        request.error = new DOMException(err.message, err.name);
+                        request._error = new DOMException(
+                            err.message,
+                            err.name,
+                        );
 
                         const event = new FakeEvent("error", {
                             bubbles: true,
@@ -465,8 +471,8 @@ class FDBFactory {
                         return;
                     }
 
-                    request.result = connection;
-                    request.readyState = "done";
+                    request._result = connection;
+                    request._readyState = "done";
 
                     const event2 = new FakeEvent("success");
                     event2.eventPath = [];
@@ -508,5 +514,17 @@ class FDBFactory {
         return "IDBFactory";
     }
 }
+
+// Operation arities come from IndexedDB.idl -- see the `operations` note in
+// lib/webidl.ts for why they cannot be read off the JS functions.
+defineInterface(FDBFactory, {
+    name: "IDBFactory",
+    operations: {
+        open: 1,
+        deleteDatabase: 1,
+        databases: 0,
+        cmp: 2,
+    },
+});
 
 export default FDBFactory;

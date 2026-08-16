@@ -1,3 +1,18 @@
-# fails because we can't detect Proxies vs non-Proxies in JavaScript
+# "proxy of an array" is not fixable in portable JavaScript, and is recorded
+# rather than chased.
+#
+# The spec keys its array branch on "Array exotic object". A Proxy whose target
+# is an array is a Proxy exotic object, but Array.isArray deliberately pierces
+# the proxy, and so do Object.prototype.toString, the prototype chain and every
+# property descriptor -- a transparent Proxy is observationally identical to its
+# target. Browsers make the distinction with an engine-internal check they do
+# not expose.
+#
+# Two detectors do exist, and neither is worth one test:
+#   - util.types.isProxy: a Node/Bun builtin, which this browser-safe,
+#     platform:"neutral" package cannot import.
+#   - structuredClone: throws DataCloneError on a proxy, and is portable, but
+#     would mean a serialize round-trip on every array key -- the hottest path
+#     in the library.
 ["Invalid key - proxy of an array"]
 expectation = "FAIL"

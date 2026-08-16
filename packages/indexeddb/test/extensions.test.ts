@@ -1,4 +1,4 @@
-import 'fake-indexeddb/auto';
+import '@aibulat/indexeddb-impl/auto';
 import { describe as suite, it as test, afterEach } from 'node:test';
 import { assert } from 'chai';
 import { assert as typeAssert, type IsExact } from 'conditional-type-checks';

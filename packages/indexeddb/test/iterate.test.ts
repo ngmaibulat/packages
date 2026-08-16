@@ -1,7 +1,7 @@
 // Since this library proxies IDB, I haven't retested all of IDB. I've tried to cover parts of the
 // library that behave differently to IDB, or may cause accidental differences.
 
-import 'fake-indexeddb/auto';
+import '@aibulat/indexeddb-impl/auto';
 import { describe as suite, it as test, afterEach } from 'node:test';
 import { assert } from 'chai';
 import type {
