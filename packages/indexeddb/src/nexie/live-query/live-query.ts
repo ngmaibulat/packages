@@ -100,9 +100,19 @@ export function liveQuery<T>(querier: () => T | PromiseLike<T>): Observable<T> {
 
                 // The zone has to be entered synchronously here, not inside a
                 // `.then`: it is what the querier's very first read looks up.
-                NexiePromise.resolve(
-                    newZone(() => querier(), { subscr }),
-                ).then(
+                // A querier that throws before its first await throws from
+                // exactly here, and must not escape to whoever called
+                // `subscribe()` -- an error is an error whenever it happens.
+                let started: NexiePromise<T>;
+                try {
+                    started = NexiePromise.resolve(
+                        newZone(() => querier(), { subscr }),
+                    );
+                } catch (failure) {
+                    started = NexiePromise.reject(failure);
+                }
+
+                started.then(
                     (value) => {
                         running = false;
                         observed = subscr;

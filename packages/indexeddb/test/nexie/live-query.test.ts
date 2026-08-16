@@ -219,6 +219,22 @@ suite('liveQuery', () => {
         assert.lengthOf(values[0] as unknown[], 2);
     });
 
+    test('reports a synchronous throw through the error callback', async () => {
+        // Thrown before the first await, so it comes straight back out of the
+        // zone call -- it must not escape to whoever called subscribe().
+        const errors: unknown[] = [];
+        track(
+            liveQuery<never>(() => {
+                throw new Error('sync boom');
+            }).subscribe(
+                () => undefined,
+                (error) => errors.push(error),
+            ),
+        );
+        await waitUntil(() => errors.length === 1, 'the error');
+        assert.equal((errors[0] as Error).message, 'sync boom');
+    });
+
     test('reports a failing querier through the error callback', async () => {
         const { values, errors } = collect(async () => {
             await db.table('friends').toArray();

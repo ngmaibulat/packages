@@ -64,16 +64,6 @@ export function obsSetsOverlap(
     return false;
 }
 
-export function extendObsSet(
-    target: ObservabilitySet,
-    source: ObservabilitySet,
-): ObservabilitySet {
-    for (const key of Object.keys(source)) {
-        partOf(target, key).add(source[key]!);
-    }
-    return target;
-}
-
 /** A form that survives `postMessage`: RangeSet is a class, its ranges are not. */
 export type SerializedObsSet = Record<
     string,

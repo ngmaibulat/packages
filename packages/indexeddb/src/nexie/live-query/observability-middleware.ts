@@ -4,7 +4,6 @@ import { MAX_KEY, MIN_KEY } from '../globals/constants.ts';
 import { publishMutations } from './propagate-locally.ts';
 import { getSubscr } from '../zone/zone.ts';
 import {
-    extendObsSet,
     obsKey,
     partOf,
     rangeOf,
