@@ -5,6 +5,28 @@ All notable changes to `@aibulat/svelte-admin-kit`.
 The package is pre-1.0: minor versions may change or remove an export. Every such
 change is listed here.
 
+## 0.3.1
+
+Two `RecordCard` fixes, both found by looking at the rendered page rather than
+at the code. Both were present in the hand-written original 0.3.0 adopted it
+from, so neither is a regression — they had just never been seen, because the
+component's only use until now was inside a list on a phone.
+
+### Fixed
+
+- **`RecordCard` renders a stray bullet when used standalone.** It was always an
+  `<li>`, which is right inside `DataTable`'s `card` snippet — "list, 12 items"
+  is what a screen reader should say about a table replacement — and wrong for a
+  standalone summary card, where an `<li>` outside a list still draws its
+  marker. New `as?: 'li' | 'div'`, defaulting to `li`, so existing callers are
+  unaffected.
+- **A `Badge` passed in `children` stretched to full width.** `.sak-record` is a
+  column flex container, so an inline pill became a bar with its tone as a
+  background stripe. Badges are now pulled back to their content width.
+  Deliberately not `align-items: flex-start` on the container, which would have
+  been the one-line version: block children — a paragraph, a nested list, an
+  Alert — are meant to fill, and that rule would have shrunk every one of them.
+
 ## 0.3.0
 
 Everything here is additive: no existing prop changes meaning and no export is

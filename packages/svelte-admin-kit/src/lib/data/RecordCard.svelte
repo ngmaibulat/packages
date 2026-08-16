@@ -32,6 +32,7 @@
 		titleMono = false,
 		fields = [],
 		placeholder,
+		as = 'li',
 		onclick,
 		class: className = '',
 		badge,
@@ -41,6 +42,17 @@
 		title: string;
 		titleMono?: boolean;
 		fields?: RecordField[];
+		/**
+		 * `li` because the usual home is DataTable's `card` snippet, inside a
+		 * `<ul>` — and the list semantics are worth keeping there, since "list, 12
+		 * items" is exactly what a screen reader should say about a table
+		 * replacement.
+		 *
+		 * Set `div` for a standalone card. An `<li>` outside a list still renders
+		 * its marker, so the default leaves a stray bullet floating beside a card
+		 * that is not part of a list.
+		 */
+		as?: 'li' | 'div';
 		/**
 		 * A value equal to this counts as absent.
 		 *
@@ -98,11 +110,11 @@
   keydown handler that would otherwise sit here is the part most likely to be
   subtly wrong: Space must fire on keyup and must not scroll the page.
 
-  The <li> stays a bare list item in both branches. Putting the role on it
+  The wrapper element stays bare in both branches. Putting the role on it
   instead would overwrite the `listitem` semantics that tell a screen reader
   this is one record of N.
 -->
-<li>
+<svelte:element this={as}>
 	{#if onclick}
 		<button type="button" class="sak-record sak-record-clickable {className}" {onclick}>
 			{@render body()}
@@ -110,7 +122,7 @@
 	{:else}
 		<div class="sak-record {className}">{@render body()}</div>
 	{/if}
-</li>
+</svelte:element>
 
 <style>
 	.sak-record {
@@ -217,6 +229,20 @@
 	.sak-record-mono {
 		font-family: var(--sak-font-mono, ui-monospace, monospace);
 		font-variant-numeric: tabular-nums;
+	}
+
+	/*
+	 * A Badge rendered straight into `children` is a flex item of this column,
+	 * and a flex item stretches along the cross axis by default — so an inline
+	 * pill becomes a full-width bar with its tone as a background stripe.
+	 *
+	 * Only badges are pulled back to their content width. `align-items:
+	 * flex-start` on the container would have been the one-line version and is
+	 * wrong: block children — a paragraph, a nested list, an Alert — are meant
+	 * to fill, and that rule would shrink all of them to fit their text.
+	 */
+	.sak-record > :global(.sak-badge) {
+		align-self: flex-start;
 	}
 
 	.sak-record-actions {
