@@ -22,6 +22,7 @@
 		id,
 		name,
 		maxlength,
+		mono = false,
 		class: className = '',
 		fieldClass = '',
 		oninput,
@@ -41,6 +42,11 @@
 		id?: string;
 		name?: string;
 		maxlength?: number;
+		/**
+		 * Render the value in the monospace data face. For a textarea this is
+		 * usually a pasted PEM block, a header dump or a list of hosts.
+		 */
+		mono?: boolean;
 		class?: string;
 		fieldClass?: string;
 		/**
@@ -59,6 +65,7 @@
 		<textarea
 			id={controlId}
 			class="sak-input sak-input-textarea {className}"
+			class:sak-input-mono={mono}
 			bind:value
 			{name}
 			{placeholder}

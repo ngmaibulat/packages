@@ -1,6 +1,6 @@
 <script module lang="ts">
 	export type BadgeTone =
-		'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'accent' | 'muted';
+		'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'accent' | 'muted' | 'idle';
 </script>
 
 <script lang="ts">
@@ -82,5 +82,20 @@
 	.sak-badge-accent {
 		background: var(--sak-badge-accent-bg, #eef2ff);
 		color: var(--sak-badge-accent-text, #3730a3);
+	}
+
+	/*
+	 * `idle` is the eighth tone and the only one that is not a judgement.
+	 *
+	 * A status scale needs a state meaning "nothing has happened yet" — queued,
+	 * pending, never run — and every other tone answers a question this one is
+	 * not answering. Borrowing `neutral` for it was the obvious move and it is
+	 * wrong: `neutral` is what an unclassified label uses, so the two become
+	 * indistinguishable and a queue of pending rows reads as a queue of
+	 * unlabelled ones.
+	 */
+	.sak-badge-idle {
+		background: var(--sak-badge-idle-bg, #f8fafc);
+		color: var(--sak-badge-idle-text, #64748b);
 	}
 </style>

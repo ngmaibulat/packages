@@ -65,6 +65,20 @@
 	resize: vertical;
 }
 
+/*
+ * The data face. An admin form is mostly values a reader COMPARES rather than
+ * reads — ids, hostnames, IP addresses, CIDRs, key prefixes, ISO timestamps —
+ * and in a proportional face a `1` and a `7` take different widths, so nothing
+ * lines up between one field and the next.
+ *
+ * `tabular-nums` as well as the family, because several monospace stacks fall
+ * back to a proportional face for digits when the first family is missing.
+ */
+.sak-input-mono {
+	font-family: var(--sak-font-mono, ui-monospace, monospace);
+	font-variant-numeric: tabular-nums;
+}
+
 /* The select gets its own chevron: `appearance: none` above removes the
    platform one, and without a replacement a select is indistinguishable from a
    text input — which is exactly how the app rendered all 108 of them. */

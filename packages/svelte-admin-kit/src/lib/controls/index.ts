@@ -3,6 +3,7 @@ export type { ButtonVariant, ButtonSize, ButtonAppearance, ButtonShape } from '.
 export { default as ButtonGroup } from './ButtonGroup.svelte';
 export { default as Card } from './Card.svelte';
 export { default as Checkbox } from './Checkbox.svelte';
+export { default as ChipList } from './ChipList.svelte';
 export { default as CheckboxGroup } from './CheckboxGroup.svelte';
 export { default as ColumnListEditor, toColumnDrafts } from './ColumnListEditor.svelte';
 export type { ColumnDraft } from './ColumnListEditor.svelte';

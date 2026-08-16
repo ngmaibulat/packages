@@ -12,18 +12,24 @@ deliberately still outside.
   `fileMatchesAccept` and `toColumnDrafts`. Every string these render is a prop — the package
   carries no translator (see "No i18n" below). `CheckboxGroup` stacks its boxes one per row and
   offers no column count: a horizontal row of checkboxes is what it exists to prevent.
-- **`./layout`** — `PageHeader`: the `<h1>` + subtitle + actions block a screen opens with.
-- **`./feedback`** — `Alert` and `EmptyState`. `Alert` has four tones (`info`, `success`,
+  `ChipList` is multi-value entry as removable chips, which exists because a
+  comma-separated text box gives no feedback about what was parsed and no per-value validation.
+- **`./layout`** — `PageHeader` (the `<h1>` + subtitle + actions block a screen opens with) and
+  `Stepper`, a static progress rail for a multi-step form.
+- **`./feedback`** — `Alert`, `EmptyState` and `PasswordPolicy`. `Alert` has four tones (`info`, `success`,
   `warning`, `error`) and two sizes. **`live` defaults to `false`**: an `alert`/`status` role
   on a message that is already on screen at load makes a screen reader announce every standing
   caveat before the user has done anything, which is worse than silence. Set it only where the
   message appears _in response_ to an action.
-- **`./data`** — `DataTable` (+ `Th`, `Td`, `Tr`) and `Badge`. `DataTable` owns three things
-  and no more: the horizontal-scroll wrapper, the header row declared by `columns`, and the
-  "no rows" row — whose `colspan` comes from `columns.length` rather than a number someone
-  typed. Body rows stay with the caller via the `row` snippet, because that is where tables
-  actually differ. Pass `key` whenever rows can be reordered, filtered or removed.
-- **`./overlay`** — `Dialog`, `DialogBody`, `DialogFooter`, `ConfirmDialog`, over the native
+- **`./data`** — `DataTable` (+ `Th`, `Td`, `Tr`, `RecordCard`) and `Badge`. `DataTable` owns
+  three things and no more: the horizontal-scroll wrapper, the header row declared by
+  `columns`, and the "no rows" row — whose `colspan` comes from `columns.length` rather than a
+  number someone typed. Body rows stay with the caller via the `row` snippet, because that is
+  where tables actually differ. Pass `key` whenever rows can be reordered, filtered or removed.
+  Pass `loading` so the table does not assert "there is nothing here" before it has been told,
+  and `card` (rendering a `RecordCard`) to get the responsive table→cards swap described under
+  "Breakpoints".
+- **`./overlay`** — `Dialog`, `DialogBody`, `DialogFooter`, `ConfirmDialog`, `Drawer`, over the native
   `<dialog>` element (which already gives focus trapping, page inertness, Escape-to-close and
   top-layer stacking). The body and footer are separate components rather than snippets so a
   dialog that submits can wrap both in one `<form>`; `DialogBody` also takes `as="form"` to be
@@ -136,6 +142,41 @@ same element updates every `--sak-*` that reads it — you do not need a second 
 
 The `--sak-` prefix is deliberate — it avoids colliding with any unprefixed custom properties
 (`--border`, `--surface`, etc.) your own app may already define.
+
+**If you map rather than import, map everything.** An unmapped token silently falls back to the
+kit's own literal, and those literals are a light slate palette — so a gap is invisible in light
+mode and wrong in dark, which is the worst way for it to fail. The kit's own
+`src/tests/themeTokens.test.ts` asserts that `theme.css` lists exactly the tokens the components
+read, in both directions; a consuming app that maps tokens instead of importing that file wants
+the same assertion over its own stylesheet.
+
+### The auth layer
+
+`Stepper` and `PasswordPolicy` take `variant="auth"`, which switches them onto the
+`--sak-auth-*` family instead of the ordinary app tokens. It exists for the common arrangement
+where a sign-in or first-run console has a single dark treatment that does **not** flip with the
+theme — the panel stays dark in light mode and only the card on top of it changes. That is one
+surface with its own palette, so it gets its own tokens rather than being expressed as overrides
+of the app ones, which would have to be undone again on every ordinary screen.
+
+Seven tokens dress the panel (`--sak-auth-{line,chip-bg,dim,dot,on,accent,glow}`) and three
+dress the card that sits on it and does flip (`--sak-auth-card-{line,muted,text}`). An app
+without such a console never sets `variant="auth"` and never pays for them; `variant` defaults
+to `app`.
+
+### Breakpoints
+
+There are two, and they are literals at every call site rather than custom properties — a
+custom property cannot be read inside a `@media` condition, so `@media (max-width: var(--bp))`
+parses and then matches nothing, forever, which is worse than a number.
+
+- **40rem** — the phone breakpoint. `DataTable` swaps its rows for the `card` snippet's
+  `RecordCard`s, and `ColumnListEditor` stacks.
+- **48rem** — `Stepper` rotates to vertical.
+
+`DataTable` renders **both** layouts into the DOM at all times and lets CSS choose. A
+`matchMedia` listener picking one to mount shows the wrong layout for a frame after every
+resize and orientation change, because it fires after the browser has already painted.
 
 ### Rich-text toolbar tones
 

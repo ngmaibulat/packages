@@ -29,11 +29,19 @@
 	--sak-radius-lg: 1rem;
 	--sak-radius-pill: 9999px;
 
+	--sak-font-size-2xs: 0.6875rem;
 	--sak-font-size-xs: 0.75rem;
 	--sak-font-size-sm: 0.8125rem;
 	--sak-font-size-md: 0.875rem;
 	--sak-font-size-lg: 1rem;
 	--sak-font-size-display: 1.875rem;
+
+	/* The DATA face, opted into per control by `mono`. An admin screen is mostly
+	   values a reader compares rather than reads — ids, hosts, CIDRs, key
+	   prefixes, ISO timestamps — and in a proportional face a `1` and a `7` take
+	   different widths, so nothing lines up between one row and the next. Prose
+	   stays in whatever the app's body font is; the kit never sets that. */
+	--sak-font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
 
 	--sak-pad-x-xs: 0.5rem;
 	--sak-pad-y-sm: 0.375rem;
@@ -53,6 +61,9 @@
 
 	/* Surfaces */
 	--sak-surface: #ffffff;
+	/* A hair off `surface`, for a hover that must not read as a selection.
+	   `surface-strong` is too heavy for it — that one is a filled chip. */
+	--sak-surface-muted: #f8fafc;
 	--sak-surface-strong: #f1f5f9;
 	--sak-foreground: #020617;
 	--sak-text-muted: #475569;
@@ -169,6 +180,37 @@
 	--sak-alert-info-border: #bfdbfe;
 	--sak-alert-info-text: #1e40af;
 
+	/*
+	 * THE AUTH LAYER — Stepper and PasswordPolicy under `variant="auth"`.
+	 *
+	 * An app with a sign-in console usually gives it a single dark treatment that
+	 * does NOT flip with the rest of the theme: the panel stays dark in light
+	 * mode and only the card on top of it changes. That is one surface with its
+	 * own palette, so it gets its own token family rather than being expressed as
+	 * overrides of the app tokens — which would have to be undone again on every
+	 * ordinary screen.
+	 *
+	 * The defaults below are a deep-blue console. An app without one never sets
+	 * `variant="auth"` and never pays for them.
+	 */
+	--sak-auth-line: rgba(148, 170, 214, 0.16);
+	--sak-auth-chip-bg: rgba(91, 114, 153, 0.12);
+	--sak-auth-dim: #9fb3d9;
+	--sak-auth-dot: #5b7299;
+	--sak-auth-on: #eaf0fb;
+	--sak-auth-accent: #3b82f6;
+	--sak-auth-glow: #60a5fa;
+	/* The card that sits ON the dark panel, and does flip with the theme — which
+	   is why its three are separate from the seven above. */
+	--sak-auth-card-line: #e2e8f0;
+	--sak-auth-card-muted: #64748b;
+	--sak-auth-card-text: #0f172a;
+
+	/* Ink for the check drawn inside a satisfied PasswordPolicy disc. Its own
+	   token because the disc is filled with `--sak-auth-accent` or
+	   `--sak-success-bg`, and the mark has to stay legible on both. */
+	--sak-policy-check: #ffffff;
+
 	/* Empty state */
 	--sak-empty-border: #cbd5e1;
 	--sak-empty-bg: #f8fafc;
@@ -197,6 +239,11 @@
 	--sak-badge-danger-text: #991b1b;
 	--sak-badge-accent-bg: #eef2ff;
 	--sak-badge-accent-text: #3730a3;
+	/* "Nothing has happened yet" — queued, pending, never run. Distinct from
+	   `neutral`, which is what an unclassified label uses: sharing one tone
+	   makes a queue of pending rows read as a queue of unlabelled ones. */
+	--sak-badge-idle-bg: #f8fafc;
+	--sak-badge-idle-text: #64748b;
 
 	/* Dialog */
 	--sak-dialog-bg: #ffffff;

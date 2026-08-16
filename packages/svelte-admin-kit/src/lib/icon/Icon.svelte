@@ -15,7 +15,8 @@
 		registry = defaultIcons,
 		size,
 		strokeWidth,
-		color
+		color,
+		label
 	}: {
 		name: string;
 		class?: string;
@@ -23,6 +24,16 @@
 		size?: string | number;
 		strokeWidth?: number;
 		color?: string;
+		/**
+		 * Accessible name, for an icon that is the ONLY content of its control.
+		 *
+		 * Omitting it is the right default and not an oversight: most icons sit
+		 * beside a text label or inside a button that already has an `ariaLabel`,
+		 * and announcing the glyph as well makes a screen reader say the same
+		 * thing twice. So without this the svg stays `aria-hidden`, and with it
+		 * the svg becomes an `img` with a name.
+		 */
+		label?: string;
 	} = $props();
 
 	const path = $derived(registry[name] ?? '');
@@ -41,7 +52,9 @@
 	stroke="currentColor"
 	stroke-linecap="round"
 	stroke-linejoin="round"
-	aria-hidden="true"
+	role={label ? 'img' : undefined}
+	aria-label={label}
+	aria-hidden={label ? undefined : 'true'}
 	class={className}
 >
 	<!-- eslint-disable-next-line svelte/no-at-html-tags -->

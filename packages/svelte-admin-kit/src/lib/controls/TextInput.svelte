@@ -36,6 +36,7 @@
 		step,
 		maxlength,
 		inputmode,
+		mono = false,
 		class: className = '',
 		fieldClass = '',
 		oninput,
@@ -60,6 +61,11 @@
 		step?: string | number;
 		maxlength?: number;
 		inputmode?: HTMLInputAttributes['inputmode'];
+		/**
+		 * Render the value in the monospace data face. For values a reader
+		 * compares rather than reads — ids, hosts, CIDRs, key prefixes.
+		 */
+		mono?: boolean;
 		class?: string;
 		fieldClass?: string;
 		/**
@@ -90,6 +96,7 @@
 			id={controlId}
 			{type}
 			class="sak-input {className}"
+			class:sak-input-mono={mono}
 			{value}
 			{name}
 			{placeholder}
