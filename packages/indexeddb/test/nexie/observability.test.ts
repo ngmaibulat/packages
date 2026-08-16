@@ -133,6 +133,18 @@ suite('observability: writes', () => {
         assert.isFalse(byName.hasKey('Bob'), 'but not the whole index');
     });
 
+    test('a put that inserts displaces nothing, and says so precisely', async () => {
+        // Nothing to read means nothing was displaced -- which is exact, not
+        // unknown, so the index must not be widened.
+        const seen = await captureMutations(() =>
+            db.table('friends').put({ id: 7, name: 'Grace', age: 50 }),
+        );
+
+        const byName = seen[0]![keyFor('friends', 'name')]!;
+        assert.isTrue(byName.hasKey('Grace'));
+        assert.isFalse(byName.hasKey('Alice'), 'not the whole index');
+    });
+
     test('a delete publishes the index keys of the record removed', async () => {
         await db.table('friends').bulkAdd([
             { name: 'Alice', age: 30 },

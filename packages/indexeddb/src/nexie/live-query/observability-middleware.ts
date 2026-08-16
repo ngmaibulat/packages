@@ -192,7 +192,7 @@ export function createObservabilityMiddleware(): Middleware<DBCore> {
                     const recordMutation = (
                         request: DBCoreMutateRequest,
                         resultKeys: readonly IndexableType[],
-                        displaced: readonly any[],
+                        displaced: readonly any[] | null,
                     ): void => {
                         const parts = mutatedParts(request.trans);
                         const primary = partOf(parts, keyFor(null));
@@ -210,13 +210,11 @@ export function createObservabilityMiddleware(): Middleware<DBCore> {
                         }
 
                         // An `add` cannot displace anything, so its new keys are
-                        // the whole story. A `put` or `delete` is exact only if
-                        // the records it displaced were read first.
-                        const exact =
-                            request.type === 'add' ||
-                            ((request.type === 'put' ||
-                                request.type === 'delete') &&
-                                displaced.length > 0);
+                        // the whole story. A `put` or `delete` is exact only
+                        // once the records it displaces have been read --
+                        // `null` says that read did not happen, which is a
+                        // different thing from reading and finding nothing.
+                        const exact = request.type === 'add' || displaced !== null;
 
                         for (const index of secondaryIndexes(schema)) {
                             const part = partOf(parts, keyFor(index.name));
@@ -227,7 +225,7 @@ export function createObservabilityMiddleware(): Middleware<DBCore> {
                             for (const value of request.values ?? []) {
                                 part.addKeys(indexKeysOf(index, value));
                             }
-                            for (const value of displaced) {
+                            for (const value of displaced ?? []) {
                                 if (value === undefined) continue;
                                 part.addKeys(indexKeysOf(index, value));
                             }
@@ -249,15 +247,20 @@ export function createObservabilityMiddleware(): Middleware<DBCore> {
 
                             const keys = wantsDisplaced
                                 ? displacedKeys(request)
-                                : [];
+                                : null;
 
-                            const before =
-                                keys.length > 0
-                                    ? table.getMany({
-                                          trans: request.trans,
-                                          keys,
-                                      })
-                                    : NexiePromise.resolve([] as any[]);
+                            // No keys to look up means nothing can be displaced
+                            // -- an insert with a generated key, say -- which is
+                            // exact rather than unknown.
+                            const before: NexiePromise<any[] | null> =
+                                keys === null
+                                    ? NexiePromise.resolve(null)
+                                    : keys.length === 0
+                                      ? NexiePromise.resolve([] as any[])
+                                      : table.getMany({
+                                            trans: request.trans,
+                                            keys,
+                                        });
 
                             // Ask for the resulting keys even when the caller
                             // did not: `runAll` collects them regardless, so
