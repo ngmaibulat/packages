@@ -34,6 +34,7 @@ export default defineConfig({
                 text: "Libraries",
                 items: [
                     { text: "restclients", link: "/restclients/" },
+                    { text: "indexeddb", link: "/indexeddb/" },
                     { text: "isfile", link: "/isfile/" },
                     { text: "json", link: "/json/" },
                     { text: "svelte-admin-kit", link: "/svelte-admin-kit/" },
@@ -114,6 +115,12 @@ export default defineConfig({
                 {
                     text: "@aibulat/json",
                     items: [{ text: "Overview", link: "/json/" }],
+                },
+            ],
+            "/indexeddb/": [
+                {
+                    text: "@aibulat/indexeddb",
+                    items: [{ text: "Overview", link: "/indexeddb/" }],
                 },
             ],
             "/fs/": [

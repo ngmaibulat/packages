@@ -78,6 +78,10 @@ features:
       details: Read a JSON file into a typed value instead of any, with a clear error when the file is missing.
       link: /json/
       linkText: Read the docs
+    - title: "@aibulat/indexeddb"
+      details: IndexedDB with usability — promises instead of request objects, schema-aware types, store shortcuts and async iteration. A fork of idb.
+      link: /indexeddb/
+      linkText: Read the docs
     - title: Notes
       details: Scratch notes on CLI libraries, chokidar event types and file type detection.
       link: /notes/cli

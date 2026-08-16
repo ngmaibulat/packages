@@ -13,6 +13,7 @@ A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*
 - `packages/funtest` → `@aibulat/funtest`, live smoke tests for public REST APIs, published as runnable reference code (`bin`: `funtest` → `bin/run.sh`).
 - `packages/isfile` → `@aibulat/isfile`, a one-function file-existence check. The leaf of the internal dependency graph.
 - `packages/json` → `@aibulat/json`, `readJson<T>()` over `isfile`.
+- `packages/indexeddb` → `@aibulat/indexeddb`, a promise wrapper over IndexedDB. A fork of [`idb`](https://github.com/jakearchibald/idb) at v8.0.3, API unchanged. A browser library with no `bin`; like `restclients` it builds `platform: "neutral"` and must stay browser-safe. **The only package whose tests need an IndexedDB implementation** — they run on `fake-indexeddb` under `node:test`, not in a browser.
 - `packages/fs` → `@aibulat/fs`, filesystem helpers plus an `fs` bin. The only package with a native compile (`posix`) and a WASM dep (`@npcz/magic`).
 - `packages/mark` → `@aibulat/mark`, a terminal Markdown renderer (`bin`: `mark`).
 - `packages/mk-swagger-ui` → **`mk-swagger-ui`**, a static OpenAPI reference generator, rendering with **Scalar** despite the name (`bin`: `mk-swagger-ui`). One of the two members published without the `@aibulat` scope — see **The unscoped members** below.

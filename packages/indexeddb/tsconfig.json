@@ -1,0 +1,44 @@
+{
+    "compilerOptions": {
+        "target": "ES2023",
+        /* DOM is what declares IDBFactory, IDBDatabase, IDBRequest and the rest
+           of the IndexedDB surface this library proxies -- not the document.
+           `types: []` below keeps Node's globals out. */
+        "lib": ["ES2023", "DOM", "DOM.Iterable"],
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
+
+        "strict": true,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+
+        "verbatimModuleSyntax": true,
+        "isolatedModules": true,
+
+        /* Sources import with .ts specifiers so Node can run them directly under
+           `node --test`; tsc rewrites them to .js on emit. This is the
+           http/restclients/funtest style -- no path aliases, no test/register.ts.
+           See Conventions in the root CLAUDE.md. */
+        "allowImportingTsExtensions": true,
+        "rewriteRelativeImportExtensions": true,
+
+        /* Nothing in src may have runtime-emitting type syntax (enums,
+           namespaces, parameter properties) -- Node only strips types. */
+        "erasableSyntaxOnly": true,
+
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+
+        "forceConsistentCasingInFileNames": true,
+        "skipLibCheck": true,
+
+        /* The library runs in the browser, so no Node globals leak into src.
+           Tests opt back in via tsconfig.test.json. */
+        "types": [],
+
+        "rootDir": "src",
+        "outDir": "dist"
+    },
+    "include": ["src"]
+}

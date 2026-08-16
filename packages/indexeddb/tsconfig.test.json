@@ -1,0 +1,10 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": ".",
+        /* The suites run under `node --test`, so they need Node's globals. */
+        "types": ["node"]
+    },
+    "include": ["src", "test"]
+}

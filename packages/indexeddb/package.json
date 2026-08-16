@@ -1,0 +1,66 @@
+{
+    "name": "@aibulat/indexeddb",
+    "version": "0.1.0",
+    "description": "A small wrapper that makes IndexedDB usable",
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "scripts": {
+        "build": "tsdown",
+        "dev": "tsdown --watch",
+        "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+        "test": "node --test \"test/**/*.test.ts\"",
+        "prepack": "pnpm run build"
+    },
+    "files": [
+        "dist",
+        "src",
+        "CHANGELOG.md"
+    ],
+    "publishConfig": {
+        "access": "public"
+    },
+    "keywords": [
+        "IndexedDB",
+        "idb",
+        "database",
+        "browser",
+        "storage",
+        "promise",
+        "async",
+        "ESM",
+        "TypeScript"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ngmaibulat/packages.git",
+        "directory": "packages/indexeddb"
+    },
+    "bugs": {
+        "url": "https://github.com/ngmaibulat/packages/issues"
+    },
+    "homepage": "https://github.com/ngmaibulat/packages/tree/main/packages/indexeddb#readme",
+    "author": "Aibulat",
+    "license": "MIT",
+    "devDependencies": {
+        "@arethetypeswrong/core": "^0.18.5",
+        "@types/chai": "^5.2.2",
+        "@types/node": "^22.13.1",
+        "chai": "^5.2.0",
+        "conditional-type-checks": "^1.0.6",
+        "fake-indexeddb": "^6.2.5",
+        "publint": "^0.3.23",
+        "tsdown": "^0.22.14",
+        "typescript": "^5.9.3"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}
