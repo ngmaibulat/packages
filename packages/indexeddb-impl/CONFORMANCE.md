@@ -103,14 +103,50 @@ failure count to move in both directions before it settles.
 construct them, so this needs the same kind of internal door as
 `_versionchangeTransaction`. Mechanical, low risk, low user value.
 
-### 3. `FakeEventTarget` is not `EventTarget` — 6 tests
+### 3. `FakeEventTarget` is not `EventTarget` — 6 tests, and one real bug
 
-`IDBRequest.prototype`'s prototype should be `EventTarget.prototype`. Both
-runtimes now have a spec `EventTarget`, but IDB needs capture/bubble propagation
-from request → transaction → database and `EventTarget` has none — inheriting
-would keep the custom dispatch and gain only the prototype chain, plus real
-`instanceof EventTarget`. **Do not attempt alongside item 1**; dispatch ordering
-is the most delicate code here and item 1 already touches it.
+Two separable things live here. **Do the second one; the first is cosmetic.**
+
+#### 3a. The `addEventListener` options bug — fix this independently
+
+`FakeEventTarget.addEventListener` reads only `capture` out of its options
+argument. `once` and `signal` are accepted and silently ignored, which is worse
+than rejecting them — the call looks like it worked:
+
+```js
+// fires 4 times over a 3-record cursor; native fires it once
+req.addEventListener("success", handler, { once: true });
+
+// still fires after abort(); native never calls it
+req.addEventListener("success", handler, { signal: controller.signal });
+```
+
+This needs no inheritance and no dispatch changes: honour `once` by removing the
+listener after invoking it, and `signal` by registering an `abort` listener that
+removes it. Small, contained in `lib/FakeEventTarget.ts`, and it fixes behaviour
+a consumer can actually hit. It is the highest-value item in this section by a
+wide margin.
+
+#### 3b. The prototype chain — 6 tests, low value, awkward
+
+idlharness wants `Object.getPrototypeOf(IDBRequest.prototype)` to be
+`EventTarget.prototype` _directly_. Both runtimes have a spec `EventTarget`, so
+`class FakeEventTarget extends EventTarget` is a one-line change — but it does
+not satisfy the test, because `FakeEventTarget.prototype` would still sit
+between `IDBRequest.prototype` and `EventTarget.prototype`. Passing it means
+removing `FakeEventTarget` from the chain entirely and mixing its members onto
+each class, which is a real refactor.
+
+And almost nothing is inherited in exchange. `dispatchEvent` here walks an
+`eventPath` through capture → at-target → bubble, because IDB propagates from
+request → transaction → database; native `EventTarget.dispatchEvent` only fires
+listeners on one object, and its listener list cannot be enumerated from JS, so
+the propagation walk needs our own listener array either way. All three of
+`addEventListener`, `removeEventListener` and `dispatchEvent` would stay
+overridden. The gain is the prototype chain and `instanceof EventTarget`.
+
+**Do not attempt alongside item 1**; dispatch ordering is the most delicate code
+here and item 1 already touches it.
 
 ### 4. Small, isolated
 
