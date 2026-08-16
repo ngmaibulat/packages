@@ -2,6 +2,11 @@ import { describe, it } from "../harness/mocha.ts";
 import * as assert from "node:assert";
 import BinarySearchTree from "../../src/lib/binarySearchTree.ts";
 import FDBKeyRange from "../../src/FDBKeyRange.ts";
+// These construct implementation classes directly, which WebIDL says user
+// code cannot do -- `new IDBKeyRange()` throws. constructInternally opens the
+// same gate the library uses; this is white-box testing of internals, not a
+// supported way to build them.
+import { constructInternally } from "../../src/lib/webidl.ts";
 
 const assertRecordsEqual = <T>(actual: Iterable<T>, expected: Array<T>) => {
     assert.deepStrictEqual([...actual], expected);
@@ -204,7 +209,9 @@ describe("binarySearchTree", () => {
                 // in bounds
                 assertRecordsEqualGivenOrdering(
                     tree.getRecords(
-                        new FDBKeyRange("b", "d", false, false),
+                        constructInternally(
+                            () => new FDBKeyRange("b", "d", false, false),
+                        ),
                         descending,
                     ),
                     [
@@ -217,7 +224,9 @@ describe("binarySearchTree", () => {
                 // out of bounds
                 assertRecordsEqualGivenOrdering(
                     tree.getRecords(
-                        new FDBKeyRange("0", "z", false, false),
+                        constructInternally(
+                            () => new FDBKeyRange("0", "z", false, false),
+                        ),
                         descending,
                     ),
                     [
@@ -232,7 +241,9 @@ describe("binarySearchTree", () => {
                 // lower/upper open
                 assertRecordsEqualGivenOrdering(
                     tree.getRecords(
-                        new FDBKeyRange("b", "d", true, true),
+                        constructInternally(
+                            () => new FDBKeyRange("b", "d", true, true),
+                        ),
                         descending,
                     ),
                     [{ key: "c", value: "c" }],
@@ -241,7 +252,9 @@ describe("binarySearchTree", () => {
                 // lower open only
                 assertRecordsEqualGivenOrdering(
                     tree.getRecords(
-                        new FDBKeyRange("b", "d", true, false),
+                        constructInternally(
+                            () => new FDBKeyRange("b", "d", true, false),
+                        ),
                         descending,
                     ),
                     [
@@ -253,7 +266,9 @@ describe("binarySearchTree", () => {
                 // upper open only
                 assertRecordsEqualGivenOrdering(
                     tree.getRecords(
-                        new FDBKeyRange("b", "d", false, true),
+                        constructInternally(
+                            () => new FDBKeyRange("b", "d", false, true),
+                        ),
                         descending,
                     ),
                     [

@@ -5,7 +5,7 @@ import type {
     FDBCursorDirection,
     Value,
 } from "./lib/types.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import { assertInternalConstruction, defineInterface } from "./lib/webidl.ts";
 
 class FDBCursorWithValue extends FDBCursor {
     public _value: Value = undefined;
@@ -21,6 +21,7 @@ class FDBCursorWithValue extends FDBCursor {
         request?: any,
     ) {
         super(source, range, direction, request);
+        assertInternalConstruction("IDBCursorWithValue");
     }
 
     override get [Symbol.toStringTag]() {

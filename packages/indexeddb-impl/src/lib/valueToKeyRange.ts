@@ -1,6 +1,7 @@
 import FDBKeyRange from "../FDBKeyRange.ts";
 import { DataError } from "./errors.ts";
 import valueToKey from "./valueToKey.ts";
+import { constructInternally } from "./webidl.ts";
 
 // http://w3c.github.io/IndexedDB/#convert-a-value-to-a-key-range
 const valueToKeyRange = (value: any, nullDisallowedFlag: boolean = false) => {
@@ -12,7 +13,9 @@ const valueToKeyRange = (value: any, nullDisallowedFlag: boolean = false) => {
         if (nullDisallowedFlag) {
             throw new DataError();
         }
-        return new FDBKeyRange(undefined, undefined, false, false);
+        return constructInternally(
+            () => new FDBKeyRange(undefined, undefined, false, false),
+        );
     }
 
     const key = valueToKey(value);

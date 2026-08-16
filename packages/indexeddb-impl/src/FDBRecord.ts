@@ -1,5 +1,5 @@
 import type { Key } from "./lib/types.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import { assertInternalConstruction, defineInterface } from "./lib/webidl.ts";
 
 class FDBRecord {
     private _key: Key;
@@ -7,6 +7,7 @@ class FDBRecord {
     private _value: any;
 
     constructor(key: Key, primaryKey: Key, value: any) {
+        assertInternalConstruction("IDBRecord");
         this._key = key;
         this._primaryKey = primaryKey;
         this._value = value;

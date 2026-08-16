@@ -1,5 +1,15 @@
-# See discussion in https://github.com/dumbmatter/fakeIndexedDB/issues/167
-# The issue here is a subtle timing issue with setTimeout vs setImmediate that's not straightforward to resolve in Node
+# UNSTABLE, and load-dependent: it passes reliably when the file is run on its
+# own (8/8 measured) but fails intermittently inside the full suite, where 200+
+# forked child processes are competing for the machine.
+#
+# The assertion is about an upgrade transaction being finished by the time a
+# setTimeout(0) callback runs. Deactivation is a bounded microtask drain (see
+# lib/scheduling.ts), which lands before any macrotask -- but a *committed*
+# transaction reaches "finished" through a queueTask, and under load that can
+# slip past the caller's timer.
+#
+# Recorded as UNSTABLE so neither outcome turns the build red. Whether the
+# expectTimeout fires is part of the same race.
 expectTimeout = "UNSTABLE"
 
 ["in a setTimeout(0) callback after the complete event is fired for a committed transaction"]

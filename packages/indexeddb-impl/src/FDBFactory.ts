@@ -9,7 +9,11 @@ import FakeEvent from "./lib/FakeEvent.ts";
 import { queueTask } from "./lib/scheduling.ts";
 import { validateRequiredArguments } from "./lib/validateRequiredArguments.ts";
 import type { FDBDatabaseInfo } from "./lib/types.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import {
+    assertInternalConstruction,
+    constructInternally,
+    defineInterface,
+} from "./lib/webidl.ts";
 
 // https://w3c.github.io/IndexedDB/#connection-queue
 const runTaskInConnectionQueue = (
@@ -344,7 +348,7 @@ const openDatabase = (
             }
 
             // Let connection be a new connection to db.
-            const connection = new FDBDatabase(db);
+            const connection = constructInternally(() => new FDBDatabase(db));
 
             // If db’s version is less than version, then:
             if (db.version < version) {
@@ -371,6 +375,10 @@ class FDBFactory {
     // https://w3c.github.io/IndexedDB/#connection-queue
     private _connectionQueues = new Map<string, Promise<void>>(); // promise chain as lightweight FIFO task queue
 
+    constructor() {
+        assertInternalConstruction("IDBFactory");
+    }
+
     // https://w3c.github.io/IndexedDB/#dom-idbfactory-cmp
     public cmp(first: any, second: any) {
         validateRequiredArguments(arguments.length, 2, "IDBFactory.cmp");
@@ -386,7 +394,7 @@ class FDBFactory {
             "IDBFactory.deleteDatabase",
         );
 
-        const request = new FDBOpenDBRequest();
+        const request = constructInternally(() => new FDBOpenDBRequest());
         request._source = null;
 
         queueTask(() => {
@@ -441,7 +449,7 @@ class FDBFactory {
             throw new TypeError("Database version cannot be 0");
         }
 
-        const request = new FDBOpenDBRequest();
+        const request = constructInternally(() => new FDBOpenDBRequest());
         request._source = null;
 
         queueTask(() => {
@@ -519,6 +527,9 @@ class FDBFactory {
 // lib/webidl.ts for why they cannot be read off the JS functions.
 defineInterface(FDBFactory, {
     name: "IDBFactory",
+    // databases() returns a promise, so a failed brand check has to reject
+    // rather than throw.
+    promiseOperations: ["databases"],
     operations: {
         open: 1,
         deleteDatabase: 1,

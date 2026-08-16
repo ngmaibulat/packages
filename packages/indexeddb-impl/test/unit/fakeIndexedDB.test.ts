@@ -7,6 +7,11 @@ import FakeDOMStringList from "../../src/lib/FakeDOMStringList.ts";
 import type FDBDatabase from "../../src/FDBDatabase.ts";
 import type FDBCursorWithValue from "../../src/FDBCursorWithValue.ts";
 import type { TransactionMode } from "../../src/lib/types.ts";
+// These construct implementation classes directly, which WebIDL says user
+// code cannot do -- `new IDBKeyRange()` throws. constructInternally opens the
+// same gate the library uses; this is white-box testing of internals, not a
+// supported way to build them.
+import { constructInternally } from "../../src/lib/webidl.ts";
 
 describe("fakeIndexedDB Tests", () => {
     describe("Transaction Lifetime", () => {
@@ -876,7 +881,7 @@ describe("fakeIndexedDB Tests", () => {
     });
 
     it("confirm openCursor works (issue #60)", (done) => {
-        const indexedDB = new FDBFactory();
+        const indexedDB = constructInternally(() => new FDBFactory());
 
         function idb(): Promise<FDBDatabase> {
             return new Promise((resolve, reject) => {
@@ -957,7 +962,7 @@ describe("fakeIndexedDB Tests", () => {
     });
 
     it("can use deep index keypaths on undefined objects", async () => {
-        const indexedDB = new FDBFactory();
+        const indexedDB = constructInternally(() => new FDBFactory());
 
         function idb(): Promise<FDBDatabase> {
             return new Promise((resolve, reject) => {

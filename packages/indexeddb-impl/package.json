@@ -31,7 +31,8 @@
         "types.d.ts",
         "auto.d.ts",
         "NOTICE",
-        "CHANGELOG.md"
+        "CHANGELOG.md",
+        "CONFORMANCE.md"
     ],
     "publishConfig": {
         "access": "public"

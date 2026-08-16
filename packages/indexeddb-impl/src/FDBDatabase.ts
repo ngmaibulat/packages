@@ -7,7 +7,7 @@ import {
     TransactionInactiveError,
 } from "./lib/errors.ts";
 import FakeDOMStringList from "./lib/FakeDOMStringList.ts";
-import FakeEventTarget from "./lib/FakeEventTarget.ts";
+import FakeEventTarget, { inheritEventTarget } from "./lib/FakeEventTarget.ts";
 import ObjectStore from "./lib/ObjectStore.ts";
 import validateKeyPath from "./lib/validateKeyPath.ts";
 import closeConnection from "./lib/closeConnection.ts";
@@ -18,7 +18,11 @@ import type {
 } from "./lib/types.ts";
 import type Database from "./lib/Database.ts";
 import type { EventCallback } from "./lib/types.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import {
+    assertInternalConstruction,
+    constructInternally,
+    defineInterface,
+} from "./lib/webidl.ts";
 
 // Common first 3 steps of https://www.w3.org/TR/IndexedDB/#dom-idbdatabase-createobjectstore and https://www.w3.org/TR/IndexedDB/#dom-idbdatabase-deleteobjectstore
 const confirmActiveVersionchangeTransaction = (database: FDBDatabase) => {
@@ -101,6 +105,7 @@ class FDBDatabase extends FakeEventTarget {
 
     constructor(rawDatabase: Database) {
         super();
+        assertInternalConstruction("IDBDatabase");
 
         this._rawDatabase = rawDatabase;
         this._rawDatabase.connections.push(this);
@@ -332,9 +337,24 @@ class FDBDatabase extends FakeEventTarget {
             );
         }
 
-        const tx = new FDBTransaction(storeNames, mode, durability, this);
+        const tx = constructInternally(
+            () => new FDBTransaction(storeNames, mode, durability, this),
+        );
         this._rawDatabase.transactions.push(tx);
         this._rawDatabase.processTransactions(); // See if can start right away (async)
+
+        // A transaction is created active and stays active for the task that
+        // created it, through that task's microtask checkpoint, and no longer.
+        // Nothing used to end that window, so a transaction created here stayed
+        // active indefinitely and accepted requests from later tasks that a
+        // browser would reject.
+        //
+        // The upgrade path is excluded: "upgrade a database" drives the state
+        // by hand around the upgradeneeded dispatch (see FDBFactory), and a
+        // second scheduler racing it would only confuse matters.
+        if (!internalVersionchange) {
+            tx._deactivateAfterCheckpoint();
+        }
 
         return tx;
     }
@@ -359,5 +379,9 @@ defineInterface(FDBDatabase, {
         deleteObjectStore: 1,
     },
 });
+
+// After defineInterface: IDBRequest/IDBDatabase/IDBTransaction inherit
+// EventTarget in the IDL, and idlharness checks the direct prototype link.
+inheritEventTarget(FDBDatabase);
 
 export default FDBDatabase;

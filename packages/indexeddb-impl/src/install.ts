@@ -12,17 +12,53 @@ import FDBRequest from "./FDBRequest.ts";
 import FDBTransaction from "./FDBTransaction.ts";
 import FDBVersionChangeEvent from "./FDBVersionChangeEvent.ts";
 
-// Partly match the native behaviour for `globalThis.indexedDB`,
-// `globalThis.IDBCursor` and the rest. Per the IDL `indexedDB` is readonly and
-// the others are readwrite, but we make them all writable so a test can still
-// replace one with `globalThis.<global> = ...`.
 // https://w3c.github.io/IndexedDB/#idl-index
+//
+// The interface objects (IDBCursor and friends) are writable, non-enumerable
+// data properties, which is what WebIDL says an interface object on the global
+// is -- and it also lets a test swap one out by assignment.
 const descriptor = (value: unknown): PropertyDescriptor => ({
     value,
     enumerable: false,
     configurable: true,
     writable: true,
 });
+
+// `indexedDB` is different: it is a readonly *attribute*, so WebIDL makes it an
+// enumerable accessor whose getter brand-checks its receiver, and gives it no
+// setter. Browsers behave exactly that way -- `window.indexedDB = x` does
+// nothing there either.
+//
+// So assignment does not work here, deliberately. The property stays
+// configurable, so a test that needs to substitute its own factory can use
+// Object.defineProperty, or just call installGlobals() again.
+const indexedDBDescriptor = (
+    target: object,
+    factory: unknown,
+): PropertyDescriptor => {
+    const get = function (this: unknown) {
+        // `undefined`/`null` is allowed as well as the global itself: an
+        // attribute on a [Global] interface has an implicit this, so
+        // `getter.call(undefined)` must work. Anything else is a brand
+        // mismatch.
+        if (this !== target && this !== undefined && this !== null) {
+            throw new TypeError(
+                "Illegal invocation: indexedDB getter called on an incompatible receiver",
+            );
+        }
+        return factory;
+    };
+
+    // WebIDL names an attribute's getter "get <name>", and idlharness checks
+    // it. A function expression assigned to a `get` property in an object
+    // literal is named after the property -- "get" -- so it is set explicitly.
+    Object.defineProperty(get, "name", {
+        value: "get indexedDB",
+        configurable: true,
+    });
+
+    return { get, enumerable: true, configurable: true };
+};
 
 /**
  * Install the implementation onto a global object.
@@ -39,7 +75,7 @@ const descriptor = (value: unknown): PropertyDescriptor => ({
  */
 export function installGlobals(target: object = globalThis): void {
     Object.defineProperties(target, {
-        indexedDB: descriptor(fakeIndexedDB),
+        indexedDB: indexedDBDescriptor(target, fakeIndexedDB),
         IDBCursor: descriptor(FDBCursor),
         IDBCursorWithValue: descriptor(FDBCursorWithValue),
         IDBDatabase: descriptor(FDBDatabase),

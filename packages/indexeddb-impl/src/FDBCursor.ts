@@ -19,7 +19,7 @@ import type {
     Value,
 } from "./lib/types.ts";
 import type FDBRequest from "./FDBRequest.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import { assertInternalConstruction, defineInterface } from "./lib/webidl.ts";
 
 const getEffectiveObjectStore = (cursor: FDBCursor) => {
     if (cursor.source instanceof FDBObjectStore) {
@@ -94,6 +94,7 @@ class FDBCursor {
         request?: FDBRequest,
         keyOnly: boolean = false,
     ) {
+        assertInternalConstruction("IDBCursor");
         this._range = range;
         this._source = source;
         this._direction = direction;

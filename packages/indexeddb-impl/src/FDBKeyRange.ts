@@ -2,7 +2,11 @@ import { cmpKeys } from "./lib/cmp.ts";
 import { DataError } from "./lib/errors.ts";
 import valueToKey from "./lib/valueToKey.ts";
 import type { Key } from "./lib/types.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import {
+    assertInternalConstruction,
+    constructInternally,
+    defineInterface,
+} from "./lib/webidl.ts";
 
 // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#range-concept
 class FDBKeyRange {
@@ -11,7 +15,9 @@ class FDBKeyRange {
             throw new TypeError();
         }
         value = valueToKey(value);
-        return new FDBKeyRange(value, value, false, false);
+        return constructInternally(
+            () => new FDBKeyRange(value, value, false, false),
+        );
     }
 
     public static lowerBound(lower: Key, open: boolean = false) {
@@ -19,7 +25,9 @@ class FDBKeyRange {
             throw new TypeError();
         }
         lower = valueToKey(lower);
-        return new FDBKeyRange(lower, undefined, open, true);
+        return constructInternally(
+            () => new FDBKeyRange(lower, undefined, open, true),
+        );
     }
 
     public static upperBound(upper: Key, open: boolean = false) {
@@ -27,7 +35,9 @@ class FDBKeyRange {
             throw new TypeError();
         }
         upper = valueToKey(upper);
-        return new FDBKeyRange(undefined, upper, true, open);
+        return constructInternally(
+            () => new FDBKeyRange(undefined, upper, true, open),
+        );
     }
 
     public static bound(
@@ -47,7 +57,9 @@ class FDBKeyRange {
             throw new DataError();
         }
 
-        return new FDBKeyRange(lower, upper, lowerOpen, upperOpen);
+        return constructInternally(
+            () => new FDBKeyRange(lower, upper, lowerOpen, upperOpen),
+        );
     }
 
     public _lower: Key | undefined;
@@ -77,6 +89,7 @@ class FDBKeyRange {
         lowerOpen: boolean,
         upperOpen: boolean,
     ) {
+        assertInternalConstruction("IDBKeyRange");
         this._lower = lower;
         this._upper = upper;
         this._lowerOpen = lowerOpen;

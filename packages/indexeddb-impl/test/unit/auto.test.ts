@@ -5,10 +5,16 @@ import { fileURLToPath } from "node:url";
 import * as fakeIndexedDB from "../../src/index.ts";
 import { installGlobals } from "../../src/install.ts";
 
-// `indexedDB` is read-only natively, all the others are read-write.
-const props = Object.keys(fakeIndexedDB).filter(
-    (prop) => prop.startsWith("IDB") || prop === "indexedDB",
+// The interface objects: writable, non-enumerable data properties, per WebIDL.
+// `indexedDB` is not one of them -- it is a readonly attribute, so it gets an
+// enumerable accessor with no setter, and is checked separately below.
+const interfaceObjects = Object.keys(fakeIndexedDB).filter((prop) =>
+    prop.startsWith("IDB"),
 ) as Array<keyof typeof fakeIndexedDB>;
+
+const props = [...interfaceObjects, "indexedDB"] as Array<
+    keyof typeof fakeIndexedDB
+>;
 
 /** Blank out the globals so we can watch `auto` install them. */
 function clearGlobals() {
@@ -38,7 +44,7 @@ describe("auto", () => {
         // globals we just cleared stay cleared.
         installGlobals();
 
-        for (const prop of props) {
+        for (const prop of interfaceObjects) {
             const descriptor = Object.getOwnPropertyDescriptor(
                 globalThis,
                 prop,
@@ -54,14 +60,55 @@ describe("auto", () => {
         }
     });
 
-    it("leaves the globals overwritable", async () => {
+    it("installs indexedDB as the readonly attribute WebIDL declares", () => {
+        clearGlobals();
+        installGlobals();
+
+        const descriptor = Object.getOwnPropertyDescriptor(
+            globalThis,
+            "indexedDB",
+        )!;
+        assert.equal(typeof descriptor.get, "function", "has a getter");
+        assert.equal(descriptor.set, undefined, "readonly: no setter");
+        assert.equal(descriptor.enumerable, true, "attributes are enumerable");
+        assert.equal(descriptor.configurable, true);
+        assert.equal(descriptor.get!.name, "get indexedDB");
+        assert.equal(globalThis.indexedDB, fakeIndexedDB.indexedDB);
+
+        // A [Global] attribute's getter has an implicit this...
+        assert.equal(
+            descriptor.get!.call(undefined),
+            fakeIndexedDB.indexedDB,
+            "implicit this",
+        );
+        // ...but any other receiver is a brand mismatch.
+        assert.throws(() => descriptor.get!.call({}), TypeError);
+    });
+
+    it("indexedDB can still be replaced, just not by assignment", () => {
+        clearGlobals();
+        installGlobals();
+
+        const substitute = {} as typeof fakeIndexedDB.indexedDB;
+        Object.defineProperty(globalThis, "indexedDB", {
+            value: substitute,
+            configurable: true,
+            writable: true,
+        });
+        assert.equal(globalThis.indexedDB, substitute);
+
+        installGlobals();
+        assert.equal(globalThis.indexedDB, fakeIndexedDB.indexedDB);
+    });
+
+    it("leaves the interface objects overwritable", async () => {
         // installGlobals() rather than `import "../../src/auto.ts"`: the import
         // only runs once per module registry, so under a runner that shares a
         // process across files (bun test) it is a no-op the second time and the
         // globals we just cleared stay cleared.
         installGlobals();
 
-        for (const prop of props) {
+        for (const prop of interfaceObjects) {
             const fake = {};
             (globalThis as any)[prop] = fake;
             assert.equal((globalThis as any)[prop], fake, prop);

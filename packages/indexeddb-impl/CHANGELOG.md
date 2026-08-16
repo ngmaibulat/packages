@@ -67,34 +67,69 @@ latent problem rather than a Bun quirk:
 
 ## Conformance
 
-Forked at 1,369 passing W3C web-platform-tests with 144 recorded failures; now
-**1,488 passing with 25**. Nothing was added to the expectation manifests. See
-[CONFORMANCE.md](CONFORMANCE.md) for the remainder and the plan.
+Forked at 1,369 passing W3C web-platform-tests with 144 recorded failures, 4
+expected timeouts and 11 unstable tests; now **1,536 passing with 3 failures, 1
+timeout and 2 unstable**, and **every one of the 207 idlharness assertions
+passes**. Nothing was added to the expectation manifests, and the corpus was
+re-synced from upstream wpt along the way. See
+[CONFORMANCE.md](CONFORMANCE.md) for the remainder and why each one stays.
 
-- **WebIDL fidelity.** `src/lib/webidl.ts` gives each class the shape its IDL
-  declares, and the attributes moved from instance fields to prototype
-  accessors. Three of these are behavioural, not cosmetic:
-    - **Feature detection worked wrongly.** 37 attributes were own instance
-      properties, so `'durability' in IDBTransaction.prototype` was false.
-    - **Every instance had all eight event-handler names.** `FakeEventTarget`
-      declared `onabort` … `onversionchange` as plain fields, so an `IDBDatabase`
-      answered true to `'onupgradeneeded' in db`. Each interface now defines only
-      its own, on its own prototype.
-    - **Ten readonly attributes had setters** — eight of them no-op
-      `/* for babel */` stubs for a build system this fork does not use — so
-      `cursor.key = x` silently appeared to work.
-      Also: interface objects report their IDL `name` and `length` (it was
-      `FDBRequest`, visible in every stack trace), members are enumerable and
-      brand-checked, and operations report the IDL's required-argument count.
-- **`db.transaction(store, 'versionchange')` throws TypeError**, as the spec
-  requires; it used to succeed and hand back an upgrade transaction. The check
-  is ordered after the scope checks so `NotFoundError` still wins for a missing
-  store, and the upgrade algorithm reaches the same code through an internal
-  door.
-- **`assert_readonly` in the vendored harness was wrong for ES modules.** It
-  assigned and expected the assignment to be discarded, which holds for
-  upstream's classic script but not in strict mode — so once the attributes
-  became genuinely readonly it started reporting correct behaviour as failure.
+### Behaviour
+
+- **Transactions go inactive.** One was created `"active"` and never left that
+  state, so a request placed from a later task -- which a browser rejects with
+  `TransactionInactiveError` -- quietly succeeded, and `commit()` never threw.
+  It now deactivates after the creating task and after each success/error
+  dispatch, using a bounded microtask drain -- the only scheduling approach that
+  lands after a caller's `await` chain but before their next task on both
+  runtimes. That one change also settled eleven tests that had been recorded as
+  flaky since the fork.
+- **`objectStore()` threw `InvalidStateError` for a merely inactive
+  transaction.** That is the error for a _finished_ one; an inactive
+  transaction still returns a store handle, and the request against it is what
+  throws.
+- **`db.transaction(store, "versionchange")` throws `TypeError`** instead of
+  handing back an upgrade transaction, ordered so `NotFoundError` still wins for
+  a missing store.
+- **`addEventListener` honours `once` and `signal`.** Both were accepted and
+  silently ignored: a `{ once: true }` listener fired once per record over a
+  cursor, and an aborted `AbortSignal` removed nothing. No W3C test covers
+  either, which is why it went unnoticed.
+
+### WebIDL
+
+`src/lib/webidl.ts` gives each class the shape its IDL declares. Beyond the
+conformance count, four of these were observable:
+
+- **Feature detection answered wrongly.** 37 attributes were own instance
+  properties, so `'durability' in IDBTransaction.prototype` was false.
+- **Every instance carried all eight event-handler names**, so an `IDBDatabase`
+  answered true to `'onupgradeneeded' in db`.
+- **Ten readonly attributes had setters**, eight of them no-op `/* for babel */`
+  stubs, so `cursor.key = x` silently appeared to work.
+- **`instanceof EventTarget` was false.** `IDBRequest`, `IDBDatabase` and
+  `IDBTransaction` now sit directly under `EventTarget` and carry its internal
+  slots.
+- **`globalThis.indexedDB` was assignable.** It is a readonly attribute in the
+  IDL, so it is now an enumerable accessor with no setter -- assignment does
+  nothing, exactly as in a browser. It stays configurable, so
+  `Object.defineProperty` or another `installGlobals()` call still substitutes
+  it.
+
+Also: interfaces are no longer constructible (`new IDBCursor()` throws, as the
+IDL requires), interface objects report their IDL `name` and `length`, members
+are enumerable and brand-checked, operations report the IDL's required-argument
+count, and `databases()` rejects rather than throws on a failed brand check.
+
+### Corpus and harness
+
+- Re-synced from upstream wpt (August 2026, `7327d61f88`), adding 17 tests, all
+  passing.
+- `assert_readonly` assigned and expected the assignment to be discarded, which
+  holds for upstream's classic script but not in an ES module -- so once the
+  attributes became genuinely readonly it reported correct behaviour as failure.
+- `promise_rejects_js` was missing from the trimmed harness, and `convert.js`
+  resolved its paths from the working directory.
 
 ## Packaging
 

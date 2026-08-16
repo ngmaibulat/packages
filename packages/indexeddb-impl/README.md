@@ -72,13 +72,13 @@ page against a database that resets on reload.
 
 ## Tests
 
-Four suites, 1,748 tests, all headless and all hermetic:
+Four suites, 1,774 tests, all headless and all hermetic:
 
 | Suite                | What it is                                                                                                                                                     |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test/wpt/`          | The W3C [web-platform-tests](https://github.com/web-platform-tests/wpt) IndexedDB conformance corpus, 222 files, each forked into its own process. 1,369 pass. |
+| `test/wpt/`          | The W3C [web-platform-tests](https://github.com/web-platform-tests/wpt) IndexedDB conformance corpus, 223 files, each forked into its own process. 1,536 pass. |
 | `test/qunit/`        | The indexedDBmock corpus, 105 tests. Upstream could only run this in a real browser.                                                                           |
-| `test/unit/`         | The project's own unit tests, 96 of them.                                                                                                                      |
+| `test/unit/`         | The project's own unit tests, 105 of them.                                                                                                                     |
 | `test/smoke.test.ts` | The public export surface, plus a Dexie round-trip.                                                                                                            |
 
 ```bash
@@ -96,10 +96,10 @@ Regenerate them with `GENERATE_MANIFESTS=1 pnpm run test:wpt`.
 
 ### Known gaps
 
-149 conformance tests are recorded as expected failures and 4 as expected
-timeouts. 132 of them are WebIDL interface-shape checks in a single file rather
-than behavioural defects; the genuinely behavioural set is 17 tests and the 4
-timeouts, mostly transaction activation timing.
+Three conformance tests are recorded as expected failures, two as unstable and
+one as an expected timeout, down from 144 failures at the fork. Every idlharness
+assertion passes. What remains is event-loop emulation that Node and Bun cannot
+express, plus two load-dependent races.
 
 `test/wpt/manifests/` is the authoritative record, and
-[CONFORMANCE.md](CONFORMANCE.md) breaks the gaps down and plans the fixes.
+[CONFORMANCE.md](CONFORMANCE.md) breaks each one down.

@@ -2,15 +2,13 @@ import FDBKeyRange from "../FDBKeyRange.ts";
 import { cmpKeys } from "./cmp.ts";
 import { ConstraintError } from "./errors.ts";
 import type { Record } from "./types.ts";
+import { constructInternally } from "./webidl.ts";
 
 // what fraction of the total number of nodes are allowed to be deleted tombstones?
 const MAX_TOMBSTONE_FACTOR = 2 / 3;
 
-const EVERYTHING_KEY_RANGE = new FDBKeyRange(
-    undefined,
-    undefined,
-    false,
-    false,
+const EVERYTHING_KEY_RANGE = constructInternally(
+    () => new FDBKeyRange(undefined, undefined, false, false),
 );
 
 interface Node {

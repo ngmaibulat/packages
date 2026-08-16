@@ -8,7 +8,9 @@ function makeParentDir(file) {
     fs.mkdirSync(dir, { recursive: true });
 }
 
-const __dirname = "src/test/web-platform-tests";
+// Resolved from this file, not the working directory. Upstream hardcoded a
+// cwd-relative path -- the same bug run-all.js had.
+const __dirname = import.meta.dirname;
 
 const inFolder = path.posix.join(__dirname, "IndexedDB");
 const outFolder = path.posix.join(__dirname, "converted");

@@ -1,2 +1,11 @@
-# No Web Worker in Node.js.
+# Skipped, and it will stay skipped even though the runtimes have caught up.
+#
+# The old reason -- "No Web Worker in Node.js" -- is now only half true: Bun has
+# a Web `Worker` global and Node has worker_threads. But the databases in this
+# package live in module state, and a worker gets its own module registry, so a
+# worker would open an empty database rather than the one the main thread just
+# populated. The test's premise cannot hold for an in-memory implementation.
+#
+# It would also only ever run under Bun, and Node and Bun are required to report
+# identical totals.
 skip = true

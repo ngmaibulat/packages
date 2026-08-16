@@ -298,6 +298,44 @@ function assert_throws_js(constructor, func, description) {
 }
 
 /**
+ * Assert that a promise rejects with a JS Error of the expected constructor.
+ *
+ * Local addition: upstream's testharness.js has this, but the trimmed copy this
+ * file grew from did not, so `idlharness` failed with "promise_rejects_js is
+ * not defined" for every promise-returning operation -- of which IndexedDB has
+ * exactly one, IDBFactory.databases().
+ *
+ * @param {object} test Unused; kept for signature compatibility with upstream.
+ * @param {object} constructor The expected exception constructor.
+ * @param {Promise} promise The promise expected to reject.
+ * @param {string} description Error description for the case that it does not.
+ */
+function promise_rejects_js(test, constructor, promise, description) {
+    return Promise.resolve(promise).then(
+        () => {
+            assert(
+                false,
+                "promise_rejects_js",
+                description,
+                "expected the promise to reject",
+                {},
+            );
+        },
+        (reason) => {
+            assert_throws_js_impl(
+                constructor,
+                () => {
+                    throw reason;
+                },
+                description,
+                "promise_rejects_js",
+            );
+        },
+    );
+}
+global.promise_rejects_js = promise_rejects_js;
+
+/**
  * Like assert_throws_js but allows specifying the assertion type
  * (assert_throws_js or promise_rejects_js, in practice).
  */

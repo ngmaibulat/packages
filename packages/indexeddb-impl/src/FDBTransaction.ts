@@ -8,8 +8,8 @@ import {
 } from "./lib/errors.ts";
 import FakeDOMStringList from "./lib/FakeDOMStringList.ts";
 import FakeEvent from "./lib/FakeEvent.ts";
-import FakeEventTarget from "./lib/FakeEventTarget.ts";
-import { queueTask } from "./lib/scheduling.ts";
+import FakeEventTarget, { inheritEventTarget } from "./lib/FakeEventTarget.ts";
+import { queueAfterCheckpoint, queueTask } from "./lib/scheduling.ts";
 import type FDBDatabase from "./FDBDatabase.ts";
 import type {
     EventCallback,
@@ -21,7 +21,11 @@ import type {
 import type FDBOpenDBRequest from "./FDBOpenDBRequest.ts";
 import type ObjectStore from "./lib/ObjectStore.ts";
 import type Index from "./lib/Index.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import {
+    assertInternalConstruction,
+    constructInternally,
+    defineInterface,
+} from "./lib/webidl.ts";
 
 const prioritizedListenerTypes = ["error", "abort", "complete"] as const;
 export type PrioritizedListenerType = (typeof prioritizedListenerTypes)[number];
@@ -30,6 +34,8 @@ export type PrioritizedListenerType = (typeof prioritizedListenerTypes)[number];
 class FDBTransaction extends FakeEventTarget {
     public _state: "active" | "inactive" | "committing" | "finished" = "active";
     public _started = false;
+    /** Guards against queueing the same deactivation twice. */
+    public _deactivationScheduled = false;
     public _rollbackLog: RollbackLog = [];
     public _objectStoresCache: Map<string, FDBObjectStore> = new Map();
     public _openRequest: FDBOpenDBRequest | null = null;
@@ -104,6 +110,7 @@ class FDBTransaction extends FakeEventTarget {
         db: FDBDatabase,
     ) {
         super();
+        assertInternalConstruction("IDBTransaction");
 
         this._scope = new Set(storeNames);
         this._mode = mode;
@@ -216,7 +223,12 @@ class FDBTransaction extends FakeEventTarget {
 
     // http://w3c.github.io/IndexedDB/#dom-idbtransaction-objectstore
     public objectStore(name: string) {
-        if (this._state !== "active") {
+        // Only "finished" is an InvalidStateError here. An inactive transaction
+        // still hands back a store handle; it is the request placed against
+        // that handle which throws TransactionInactiveError. Conflating the two
+        // meant the wrong error escaped as soon as transactions began going
+        // inactive at all.
+        if (this._state === "finished") {
             throw new InvalidStateError();
         }
 
@@ -230,7 +242,9 @@ class FDBTransaction extends FakeEventTarget {
             throw new NotFoundError();
         }
 
-        const objectStore2 = new FDBObjectStore(this, rawObjectStore);
+        const objectStore2 = constructInternally(
+            () => new FDBObjectStore(this, rawObjectStore),
+        );
         this._objectStoresCache.set(name, objectStore2);
 
         return objectStore2;
@@ -250,9 +264,9 @@ class FDBTransaction extends FakeEventTarget {
         if (!request) {
             if (!source) {
                 // Special requests like indexes that just need to run some code
-                request = new FDBRequest();
+                request = constructInternally(() => new FDBRequest());
             } else {
-                request = new FDBRequest();
+                request = constructInternally(() => new FDBRequest());
                 request._source = source;
                 request._transaction = (source as any).transaction;
             }
@@ -264,6 +278,37 @@ class FDBTransaction extends FakeEventTarget {
         });
 
         return request;
+    }
+
+    /**
+     * Mark the transaction inactive once the current microtask checkpoint has
+     * run, if nothing has finished or aborted it in the meantime.
+     */
+    public _deactivateAfterCheckpoint() {
+        // queueTask, not queueMicrotask: the transaction has to stay active
+        // for the whole microtask checkpoint, and one queueMicrotask buys a
+        // single hop -- `await request` costs two, so the deactivation would
+        // land mid promise-chain and break the ordinary "await a request, then
+        // issue the next one" loop. Every microtask drains before any
+        // macrotask, so a macrotask is the right granularity.
+        //
+        // It is not a *sufficient* granularity, and cannot be: see
+        // "Event-loop emulation" in CONFORMANCE.md for the three primitives
+        // that were measured and why none of them lands in the slot the spec
+        // needs.
+        if (this._deactivationScheduled) {
+            return;
+        }
+        this._deactivationScheduled = true;
+
+        const deactivate = () => {
+            this._deactivationScheduled = false;
+            if (this._state === "active") {
+                this._state = "inactive";
+            }
+        };
+
+        queueAfterCheckpoint(deactivate);
     }
 
     public _start() {
@@ -284,6 +329,14 @@ class FDBTransaction extends FakeEventTarget {
         }
 
         if (request && operation) {
+            // The transaction is active while its own request runs. The
+            // operation is the transaction's work, not script placing a new
+            // request against it, and parts of it -- cloneValueForInsertion --
+            // assert as much.
+            if (this._state === "inactive") {
+                this._state = "active";
+            }
+
             if (!request.source) {
                 // Special requests like indexes that just need to run some code, with error handling already built into
                 // operation
@@ -298,9 +351,8 @@ class FDBTransaction extends FakeEventTarget {
                     request._error = undefined;
 
                     // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#dfn-fire-a-success-event
-                    if (this._state === "inactive") {
-                        this._state = "active";
-                    }
+                    // (step 1, "set state to active", is done above, before the
+                    // operation ran)
                     event = new FakeEvent("success", {
                         bubbles: false,
                         cancelable: false,
@@ -311,9 +363,8 @@ class FDBTransaction extends FakeEventTarget {
                     request._error = err;
 
                     // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#dfn-fire-an-error-event
-                    if (this._state === "inactive") {
-                        this._state = "active";
-                    }
+                    // (step 1, "set state to active", is done above, before the
+                    // operation ran)
                     event = new FakeEvent("error", {
                         bubbles: true,
                         cancelable: true,
@@ -330,6 +381,21 @@ class FDBTransaction extends FakeEventTarget {
                         this._abort("AbortError");
                         defaultAction = undefined; // do not abort again
                     }
+                } finally {
+                    // Step 3 of "fire a success event" / "fire an error event":
+                    // the transaction goes inactive again once the dispatch is
+                    // over. Without this it stayed active forever, so a request
+                    // issued from a later task -- which a browser rejects with
+                    // TransactionInactiveError -- quietly succeeded here.
+                    //
+                    // Deferred by a microtask rather than done inline, because
+                    // the transaction has to survive the microtask checkpoint
+                    // that follows the dispatch. In a browser that checkpoint
+                    // runs *inside* dispatch, whenever the JS stack empties
+                    // between listeners, which is what makes the ordinary
+                    // `await request` / issue the next request pattern work.
+                    // Deactivating inline breaks every such loop.
+                    this._deactivateAfterCheckpoint();
                 }
 
                 // Default action of event
@@ -380,5 +446,9 @@ defineInterface(FDBTransaction, {
         abort: 0,
     },
 });
+
+// After defineInterface: IDBRequest/IDBDatabase/IDBTransaction inherit
+// EventTarget in the IDL, and idlharness checks the direct prototype link.
+inheritEventTarget(FDBTransaction);
 
 export default FDBTransaction;

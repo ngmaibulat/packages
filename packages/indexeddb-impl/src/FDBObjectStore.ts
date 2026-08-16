@@ -32,7 +32,11 @@ import type {
 } from "./lib/types.ts";
 import type ObjectStore from "./lib/ObjectStore.ts";
 import type FDBTransaction from "./FDBTransaction.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import {
+    assertInternalConstruction,
+    constructInternally,
+    defineInterface,
+} from "./lib/webidl.ts";
 
 const confirmActiveTransaction = (objectStore: FDBObjectStore) => {
     if (objectStore._rawObjectStore.deleted) {
@@ -124,6 +128,7 @@ class FDBObjectStore {
     private _name: string;
 
     constructor(transaction: FDBTransaction, rawObjectStore: ObjectStore) {
+        assertInternalConstruction("IDBObjectStore");
         this._rawObjectStore = rawObjectStore;
 
         this._name = rawObjectStore.name;
@@ -434,11 +439,13 @@ class FDBObjectStore {
             range = FDBKeyRange.only(valueToKey(range));
         }
 
-        const request = new FDBRequest();
+        const request = constructInternally(() => new FDBRequest());
         request._source = this;
         request._transaction = this.transaction;
 
-        const cursor = new FDBCursorWithValue(this, range, direction, request);
+        const cursor = constructInternally(
+            () => new FDBCursorWithValue(this, range, direction, request),
+        );
 
         return this.transaction._execRequestAsync({
             operation: cursor._iterate.bind(cursor),
@@ -460,11 +467,13 @@ class FDBObjectStore {
             range = FDBKeyRange.only(valueToKey(range));
         }
 
-        const request = new FDBRequest();
+        const request = constructInternally(() => new FDBRequest());
         request._source = this;
         request._transaction = this.transaction;
 
-        const cursor = new FDBCursor(this, range, direction, request, true);
+        const cursor = constructInternally(
+            () => new FDBCursor(this, range, direction, request, true),
+        );
 
         return this.transaction._execRequestAsync({
             operation: cursor._iterate.bind(cursor),
@@ -539,7 +548,7 @@ class FDBObjectStore {
             this._rawObjectStore.rawIndexes.delete(index.name);
         });
 
-        return new FDBIndex(this, index);
+        return constructInternally(() => new FDBIndex(this, index));
     }
 
     // https://w3c.github.io/IndexedDB/#dom-idbobjectstore-index
@@ -565,7 +574,7 @@ class FDBObjectStore {
             throw new NotFoundError();
         }
 
-        const index2 = new FDBIndex(this, rawIndex);
+        const index2 = constructInternally(() => new FDBIndex(this, rawIndex));
         this._indexesCache.set(name, index2);
 
         return index2;

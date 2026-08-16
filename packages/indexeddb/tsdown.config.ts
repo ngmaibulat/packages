@@ -7,7 +7,17 @@ export default defineConfig({
     // That is why package.json must NOT declare `sideEffects: false`: a bundler
     // taking that at its word could drop those imports and silently remove the
     // db.get shortcuts and the async iterators.
-    entry: ["src/index.ts"],
+    //
+    // src/nexie.ts is the second, high-level root (the `./nexie` subpath). The
+    // two graphs are deliberately DISJOINT -- nothing under src/nexie/ imports
+    // entry.ts, wrap-idb-value.ts or util.ts. tsdown's code splitting is
+    // unconditional, so any shared module would become a chunk that dist/index.js
+    // then has to import; keeping them separate is what guarantees the low-level
+    // bundle is byte-identical to what it was before Nexie existed. The
+    // separation is also required rather than merely tidy: promisifyRequest
+    // returns a NATIVE promise, and `await` on one of those bypasses `.then`,
+    // which would kill Nexie's transaction zone on every request.
+    entry: ["src/index.ts", "src/nexie.ts"],
     format: ["esm"],
     outDir: "dist",
 

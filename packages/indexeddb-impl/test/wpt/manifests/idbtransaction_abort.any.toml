@@ -1,3 +1,8 @@
-# Flaky test - sometimes passes, sometimes fails, needs investigation
+# Genuinely racy, and the only one left: measured over six runs it passed four
+# times and failed twice. The test aborts a transaction during auto-commit, so
+# it depends on landing between "no requests left" and "state = finished" --
+# a window this implementation crosses inside a single task.
+#
+# UNSTABLE rather than FAIL so neither outcome turns the build red.
 ["Abort during auto-committing should throw InvalidStateError."]
 expectation = "UNSTABLE"

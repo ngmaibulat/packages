@@ -1,11 +1,11 @@
 import { InvalidStateError } from "./lib/errors.ts";
-import FakeEventTarget from "./lib/FakeEventTarget.ts";
+import FakeEventTarget, { inheritEventTarget } from "./lib/FakeEventTarget.ts";
 import type FDBCursor from "./FDBCursor.ts";
 import type FDBIndex from "./FDBIndex.ts";
 import type FDBObjectStore from "./FDBObjectStore.ts";
 import type FDBTransaction from "./FDBTransaction.ts";
 import type { EventCallback } from "./lib/types.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import { assertInternalConstruction, defineInterface } from "./lib/webidl.ts";
 
 class FDBRequest extends FakeEventTarget {
     public _result: any = null;
@@ -42,6 +42,11 @@ class FDBRequest extends FakeEventTarget {
         this._onerror = value;
     }
 
+    constructor() {
+        super();
+        assertInternalConstruction("IDBRequest");
+    }
+
     public get error() {
         if (this.readyState === "pending") {
             throw new InvalidStateError();
@@ -62,5 +67,9 @@ class FDBRequest extends FakeEventTarget {
 }
 
 defineInterface(FDBRequest, { name: "IDBRequest" });
+
+// After defineInterface: IDBRequest/IDBDatabase/IDBTransaction inherit
+// EventTarget in the IDL, and idlharness checks the direct prototype link.
+inheritEventTarget(FDBRequest);
 
 export default FDBRequest;

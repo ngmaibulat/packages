@@ -632,6 +632,13 @@ function index_get_all_test_setup(storeName, callback, testDescription) {
                 expectedRecords.push({key: attr, primaryKey: letter, value});
               }
             });
+            // Records were pushed in primary-key order; sort into index-key
+            // cursor order (index key ASC, then primary key ASC within each
+            // index key) so that filterWithGetAllRecordsOptions works correctly.
+            expectedRecords.sort((a, b) => {
+              const keyCmp = indexedDB.cmp(a.key, b.key);
+              return keyCmp !== 0 ? keyCmp : indexedDB.cmp(a.primaryKey, b.primaryKey);
+            });
             return;
           }
           case 'empty': {
@@ -1526,6 +1533,22 @@ index_get_all_values_with_options_test(
 index_get_all_values_with_options_test(
     /*storeName=*/ 'out-of-line', /*options=*/ {direction: 'prevunique'},
     'Direction: prevunique');
+
+index_get_all_values_with_options_test(
+    /*storeName=*/ 'out-of-line-not-unique', /*options=*/ {direction: 'nextunique'},
+    'Direction: nextunique with duplicate index keys');
+
+index_get_all_values_with_options_test(
+    /*storeName=*/ 'out-of-line-not-unique', /*options=*/ {direction: 'prevunique'},
+    'Direction: prevunique with duplicate index keys');
+
+index_get_all_values_with_options_test(
+    /*storeName=*/ 'out-of-line-multi', /*options=*/ {direction: 'nextunique'},
+    'Direction: nextunique with multi-entry index');
+
+index_get_all_values_with_options_test(
+    /*storeName=*/ 'out-of-line-multi', /*options=*/ {direction: 'prevunique'},
+    'Direction: prevunique with multi-entry index');
 
 index_get_all_values_with_options_test(
     /*storeName=*/ 'out-of-line', /*options=*/ {

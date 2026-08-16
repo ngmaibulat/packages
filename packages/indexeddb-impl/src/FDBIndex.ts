@@ -21,7 +21,11 @@ import type {
 } from "./lib/types.ts";
 import type Index from "./lib/Index.ts";
 import type FDBObjectStore from "./FDBObjectStore.ts";
-import { defineInterface } from "./lib/webidl.ts";
+import {
+    assertInternalConstruction,
+    constructInternally,
+    defineInterface,
+} from "./lib/webidl.ts";
 
 const confirmActiveTransaction = (index: FDBIndex) => {
     if (index._rawIndex.deleted || index.objectStore._rawObjectStore.deleted) {
@@ -60,6 +64,7 @@ class FDBIndex {
     private _name: string;
 
     constructor(objectStore: FDBObjectStore, rawIndex: Index) {
+        assertInternalConstruction("IDBIndex");
         this._rawIndex = rawIndex;
 
         this._name = rawIndex.name;
@@ -158,11 +163,13 @@ class FDBIndex {
             range = FDBKeyRange.only(valueToKey(range));
         }
 
-        const request = new FDBRequest();
+        const request = constructInternally(() => new FDBRequest());
         request._source = this;
         request._transaction = this.objectStore.transaction;
 
-        const cursor = new FDBCursorWithValue(this, range, direction, request);
+        const cursor = constructInternally(
+            () => new FDBCursorWithValue(this, range, direction, request),
+        );
 
         return this.objectStore.transaction._execRequestAsync({
             operation: cursor._iterate.bind(cursor),
@@ -185,11 +192,13 @@ class FDBIndex {
             range = FDBKeyRange.only(valueToKey(range));
         }
 
-        const request = new FDBRequest();
+        const request = constructInternally(() => new FDBRequest());
         request._source = this;
         request._transaction = this.objectStore.transaction;
 
-        const cursor = new FDBCursor(this, range, direction, request, true);
+        const cursor = constructInternally(
+            () => new FDBCursor(this, range, direction, request, true),
+        );
 
         return this.objectStore.transaction._execRequestAsync({
             operation: cursor._iterate.bind(cursor),

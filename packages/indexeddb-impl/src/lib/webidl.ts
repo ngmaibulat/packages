@@ -30,6 +30,14 @@ interface InterfaceShape {
      * IndexedDB.idl. Operations absent from the map keep their natural arity.
      */
     operations?: Record<string, number>;
+    /**
+     * Operations that return a promise.
+     *
+     * WebIDL turns a failed brand check into a *rejected promise* for these,
+     * not a synchronous throw, so a caller can handle it the same way as any
+     * other failure.
+     */
+    promiseOperations?: readonly string[];
 }
 
 type AnyCtor = new (...args: never[]) => unknown;
@@ -48,12 +56,17 @@ function brandChecked(
     original: (this: unknown, ...args: never[]) => unknown,
     interfaceName: string,
     property: string,
+    returnsPromise = false,
 ) {
     const wrapper = function (this: unknown, ...args: never[]) {
         if (!(this instanceof ctor)) {
-            throw new TypeError(
+            const error = new TypeError(
                 `Illegal invocation: ${interfaceName}.${property} called on an incompatible receiver`,
             );
+            if (returnsPromise) {
+                return Promise.reject(error);
+            }
+            throw error;
         }
         return original.apply(this, args);
     };
@@ -105,7 +118,12 @@ function applyArity(fn: unknown, arity: number | undefined): void {
  */
 export function defineInterface(
     ctor: AnyCtor,
-    { name, length = 0, operations = {} }: InterfaceShape,
+    {
+        name,
+        length = 0,
+        operations = {},
+        promiseOperations = [],
+    }: InterfaceShape,
 ): void {
     Object.defineProperty(ctor, "name", {
         value: name,
@@ -143,7 +161,13 @@ export function defineInterface(
             descriptor.set = brandChecked(ctor, descriptor.set, name, key);
         }
         if (typeof descriptor.value === "function") {
-            descriptor.value = brandChecked(ctor, descriptor.value, name, key);
+            descriptor.value = brandChecked(
+                ctor,
+                descriptor.value,
+                name,
+                key,
+                promiseOperations.includes(key),
+            );
             applyArity(descriptor.value, operations[key]);
         }
         Object.defineProperty(ctor.prototype, key, descriptor);
@@ -166,5 +190,35 @@ export function defineInterface(
             continue;
         applyArity(descriptor.value, operations[key]);
         Object.defineProperty(ctor, key, { ...descriptor, enumerable: true });
+    }
+}
+
+// --- Construction -------------------------------------------------------
+//
+// Every interface in IndexedDB.idl except IDBVersionChangeEvent is declared
+// without a constructor, which in WebIDL means `new IDBCursor()` must throw a
+// TypeError. The implementation classes still have to be constructible by us,
+// though -- there are three dozen internal `new FDB*` sites -- so construction
+// is gated on a counter that only our own code opens.
+//
+// A counter rather than a boolean: a cursor built while a request is being
+// built must not close the gate on the way out.
+
+let internalConstructionDepth = 0;
+
+/** Run `build` with the construction gate open. */
+export function constructInternally<T>(build: () => T): T {
+    internalConstructionDepth += 1;
+    try {
+        return build();
+    } finally {
+        internalConstructionDepth -= 1;
+    }
+}
+
+/** Throw unless we are inside constructInternally. */
+export function assertInternalConstruction(interfaceName: string): void {
+    if (internalConstructionDepth === 0) {
+        throw new TypeError(`Illegal constructor: ${interfaceName}`);
     }
 }

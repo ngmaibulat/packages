@@ -1,0 +1,156 @@
+/**
+ * Zones -- the ambient "which transaction am I in?" context.
+ *
+ * `db.transaction('rw', db.friends, async () => { await db.friends.add(x) })`
+ * does not thread a transaction object through the caller's code. Instead the
+ * scope runs in a zone carrying `trans`, and every table operation reads it
+ * back out. Keeping that readable across `await` is what this module exists
+ * for.
+ *
+ * Two mechanisms do it together, and the Phase 0 spike showed that neither is
+ * sufficient alone:
+ *
+ *   1. The echo (here) makes `currentZone` correct *while the resumed async
+ *      body runs*, so the body's next `await` captures the right zone.
+ *   2. The `then` getter on NexiePromise captures that zone at the exact
+ *      moment of the await -- see nexie-promise.ts. This is what makes the
+ *      design immune to the disarm racing against jobs the body enqueues.
+ *
+ * Deliberately NOT here, unlike Dexie: no patching of `globalThis.Promise`, no
+ * `ZONE_ECHO_LIMIT`, no counting of expected awaits. Those exist upstream to
+ * support Babel-transpiled async/await and are not needed on the runtimes this
+ * package targets.
+ *
+ * `AsyncLocalStorage` is not an option: the package builds `platform: "neutral"`
+ * and must stay browser-safe. When TC39 `AsyncContext.Variable` ships it can
+ * replace the echo behind `getZone`/`runInZone` without touching callers.
+ */
+
+/**
+ * The minimal shape a zone needs from a Transaction. Widened to the real
+ * Transaction interface once that exists; kept structural here so this module
+ * stays at the bottom of the import graph.
+ */
+export interface ZoneTransaction {
+    active: boolean;
+    storeNames: string[];
+}
+
+export interface Zone {
+    readonly id: number;
+    readonly parent: Zone | null;
+    /** The root zone. Global zones are never echoed -- there is nothing to carry. */
+    readonly global: boolean;
+    /** The transaction table operations should join, if any. */
+    trans?: ZoneTransaction | undefined;
+    /** Nearest ancestor without a `trans`, for `ignoreTransaction()`. */
+    transless?: Zone | undefined;
+    /** Bypasses the db-open gate, for `on('ready')` subscribers. */
+    vip?: boolean | undefined;
+    /** Outstanding promises and enqueued listeners; drives `follow()`. */
+    pending: number;
+    finalize: () => void;
+}
+
+let zoneCounter = 0;
+
+const noop = (): void => {};
+
+export const rootZone: Zone = {
+    id: 0,
+    parent: null,
+    global: true,
+    pending: 0,
+    finalize: noop,
+};
+
+let currentZone: Zone = rootZone;
+
+export function getZone(): Zone {
+    return currentZone;
+}
+
+/**
+ * FIFO of zones owed to native jobs that have been enqueued but not yet run.
+ * Kept 1:1 with those jobs: each `armEcho` pushes one entry and queues exactly
+ * one microtask to shift it back off.
+ */
+const echoes: Zone[] = [];
+
+function armEcho(zone: Zone): void {
+    if (zone.global) return; // nothing to propagate outside a scope
+    echoes.push(zone);
+    queueMicrotask(disarmEcho);
+    // Deliberately does NOT assign currentZone. Handing the zone over is the
+    // drain's job, so that synchronous code following a top-level scope call
+    // does not observe the scope's zone.
+}
+
+function disarmEcho(): void {
+    echoes.shift();
+    currentZone = echoes.length > 0 ? echoes[0]! : rootZone;
+}
+
+/**
+ * Hand the front of the FIFO to whatever native job runs next. Called as the
+ * last statement of the scheduler's drain; see scheduler.ts.
+ */
+export function applyEchoFront(): void {
+    currentZone = echoes.length > 0 ? echoes[0]! : rootZone;
+}
+
+/**
+ * Run `fn` in `zone`, restoring the previous zone afterwards.
+ *
+ * The `finally` arms the echo, which is what carries the zone across whatever
+ * native jobs `fn` just enqueued -- a `PromiseResolveThenableJob` from an
+ * `await`, or the reaction job that resumes an async body.
+ */
+export function runInZone<A extends unknown[], R>(
+    zone: Zone,
+    fn: (...args: A) => R,
+    ...args: A
+): R {
+    const previous = currentZone;
+    currentZone = zone;
+    try {
+        return fn(...args);
+    } finally {
+        currentZone = previous;
+        armEcho(zone);
+    }
+}
+
+/** Create a child zone and run `fn` inside it. */
+export function newZone<R>(fn: () => R, props?: Partial<Zone>): R {
+    const parent = currentZone;
+    const zone: Zone = {
+        ...props,
+        id: ++zoneCounter,
+        parent,
+        global: false,
+        pending: 0,
+        finalize: noop,
+    };
+
+    // A child's outstanding work counts as the parent's, so `follow()` on an
+    // outer scope waits for inner scopes too.
+    if (!parent.global) {
+        parent.pending++;
+        const parentFinalize = parent.finalize;
+        zone.finalize = () => {
+            if (--parent.pending === 0) parentFinalize();
+        };
+    }
+
+    return runInZone(zone, fn);
+}
+
+/** Retain/release the zone's work counter. Used by NexiePromise. */
+export function retain(zone: Zone): void {
+    if (!zone.global) zone.pending++;
+}
+
+export function release(zone: Zone): void {
+    if (!zone.global && --zone.pending === 0) zone.finalize();
+}

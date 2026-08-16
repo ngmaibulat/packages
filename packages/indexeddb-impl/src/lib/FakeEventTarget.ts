@@ -20,6 +20,13 @@ interface Listener {
     callback: EventCallbackOrEventCallbackObject;
     capture: boolean;
     type: EventType;
+    /** Remove the listener after it is next invoked. */
+    once: boolean;
+    /**
+     * Detaches the `abort` listener registered for an AddEventListenerOptions
+     * `signal`, so removing the listener by hand does not leak it.
+     */
+    removeAbortListener?: () => void;
 }
 
 const stopped = (event: FakeEvent, listener: Listener) => {
@@ -49,12 +56,20 @@ const invokeEventListeners = (event: FakeEvent, obj: FakeEventTarget) => {
         }
     };
 
-    // The callback might cause obj.listeners to mutate as we traverse it.
+    // The callback might cause obj._listeners to mutate as we traverse it.
     // Take a copy of the array so that nothing sneaks in and we don't lose
     // our place.
-    for (const listener of obj.listeners.slice()) {
+    for (const listener of obj._listeners.slice()) {
         if (event.type !== listener.type || stopped(event, listener)) {
             continue;
+        }
+
+        // Remove a `once` listener *before* invoking it, per the DOM standard.
+        // A callback that re-dispatches the same event -- a cursor handler
+        // calling continue() is the ordinary case -- would otherwise see itself
+        // still registered and run again.
+        if (listener.once) {
+            obj._removeListener(listener);
         }
 
         invoke(listener.callback);
@@ -86,10 +101,14 @@ const invokeEventListeners = (event: FakeEvent, obj: FakeEventTarget) => {
         >
     )[prop];
     if (callback) {
-        const listener = {
+        // A synthetic listener standing in for the `on…` handler property, only
+        // so `stopped()` can be reused. It is never registered, so `once` has
+        // nothing to mean here.
+        const listener: Listener = {
             callback,
             capture: false,
             type: event.type,
+            once: false,
         };
         if (!stopped(event, listener)) {
             invoke(listener.callback);
@@ -104,21 +123,46 @@ const invokeEventListeners = (event: FakeEvent, obj: FakeEventTarget) => {
 };
 
 abstract class FakeEventTarget {
-    public readonly listeners: Listener[] = [];
+    private _listenerList?: Listener[];
+
+    /**
+     * Registered listeners, created on demand.
+     *
+     * Lazy rather than a field initializer because FakeEventTarget is spliced
+     * out of the prototype chain by inheritEventTarget() below -- its
+     * constructor never runs, so a field initializer would never fire. The
+     * name is underscored to keep it off the WebIDL surface: EventTarget has no
+     * such member.
+     */
+    public get _listeners(): Listener[] {
+        return (this._listenerList ??= []);
+    }
 
     public addEventListener(
         type: EventType,
         callback: EventCallbackOrEventCallbackObject,
         options?: boolean | AddEventListenerOptions | undefined,
     ) {
-        const capture = !!(typeof options === "object" && options
-            ? options.capture
-            : options);
-        this.listeners.push({
-            callback,
-            capture,
-            type,
-        });
+        const isDictionary = typeof options === "object" && options !== null;
+        const capture = !!(isDictionary ? options.capture : options);
+        const once = !!(isDictionary && options.once);
+        const signal = isDictionary ? options.signal : undefined;
+
+        // An already-aborted signal means the listener is never added at all.
+        if (signal?.aborted) {
+            return;
+        }
+
+        const listener: Listener = { callback, capture, type, once };
+
+        if (signal) {
+            const onAbort = () => this._removeListener(listener);
+            signal.addEventListener("abort", onAbort, { once: true });
+            listener.removeAbortListener = () =>
+                signal.removeEventListener("abort", onAbort);
+        }
+
+        this._listeners.push(listener);
     }
 
     public removeEventListener(
@@ -129,15 +173,33 @@ abstract class FakeEventTarget {
         const capture = !!(typeof options === "object" && options
             ? options.capture
             : options);
-        const i = this.listeners.findIndex((listener) => {
+        const listener = this._listeners.find((candidate) => {
             return (
-                listener.type === type &&
-                listener.callback === callback &&
-                listener.capture === capture
+                candidate.type === type &&
+                candidate.callback === callback &&
+                candidate.capture === capture
             );
         });
 
-        this.listeners.splice(i, 1);
+        if (listener) {
+            this._removeListener(listener);
+        }
+    }
+
+    /**
+     * Drop a listener and release whatever it is holding.
+     *
+     * Shared by removeEventListener, the `once` path and the `signal` path, so
+     * that all three detach the abort listener rather than leaving it attached
+     * to a signal that may outlive the target.
+     */
+    public _removeListener(listener: Listener) {
+        const i = this._listeners.indexOf(listener);
+        if (i === -1) {
+            return;
+        }
+        this._listeners.splice(i, 1);
+        listener.removeAbortListener?.();
     }
 
     // http://www.w3.org/TR/dom/#dispatching-events
@@ -182,6 +244,47 @@ abstract class FakeEventTarget {
         }
         return true;
     }
+}
+
+/**
+ * Put a class directly under `EventTarget` in the prototype chain.
+ *
+ * WebIDL says `IDBRequest` inherits `EventTarget`, and idlharness checks the
+ * *direct* link: `Object.getPrototypeOf(IDBRequest.prototype)` must be
+ * `EventTarget.prototype`. Simply writing `class FakeEventTarget extends
+ * EventTarget` would not satisfy that, because FakeEventTarget.prototype would
+ * still sit in between. So its members are copied onto the class's own
+ * prototype and it is spliced out of the chain entirely.
+ *
+ * Reassigning the constructor's prototype also changes what `super()` resolves
+ * to -- it becomes the real `EventTarget`, so instances get genuine EventTarget
+ * internal slots rather than an object that merely claims to be one. That is
+ * why `_listeners` had to become lazy: FakeEventTarget's constructor no longer
+ * runs.
+ *
+ * Call this *after* defineInterface, so the copied members are not swept into
+ * the WebIDL enumerability and brand-check pass -- they belong to
+ * EventTarget.prototype in the spec, not to this interface.
+ */
+export function inheritEventTarget(ctor: {
+    prototype: object;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    new (...args: any[]): unknown;
+}): void {
+    for (const key of Reflect.ownKeys(FakeEventTarget.prototype)) {
+        if (key === "constructor") continue;
+        if (Object.hasOwn(ctor.prototype, key)) continue;
+        const descriptor = Object.getOwnPropertyDescriptor(
+            FakeEventTarget.prototype,
+            key,
+        );
+        if (descriptor) {
+            Object.defineProperty(ctor.prototype, key, descriptor);
+        }
+    }
+
+    Object.setPrototypeOf(ctor.prototype, EventTarget.prototype);
+    Object.setPrototypeOf(ctor, EventTarget);
 }
 
 export default FakeEventTarget;

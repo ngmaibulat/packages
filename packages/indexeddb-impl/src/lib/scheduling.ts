@@ -59,3 +59,43 @@ export const queueTask = (fn: () => void): void => {
         doSetTimeout;
     setImmediate(fn);
 };
+
+// Run `fn` at the end of the current microtask checkpoint -- after the
+// callbacks a caller chained off an event, but before any macrotask.
+//
+// That slot is what "the transaction goes inactive when the task ends" needs,
+// and no scheduling primitive provides it:
+//
+//   - A single queueMicrotask is too early: one hop does not survive an
+//     `await`, which costs two, so it lands mid promise-chain and breaks the
+//     ordinary "await a request, then issue the next one" loop.
+//   - setImmediate is too late: Node runs the timers phase before the check
+//     phase, so it loses to a setTimeout(…, 0) the caller queues afterwards.
+//   - setTimeout would win that race, but Node's timer internals assign an `id`
+//     to a TimersList, tripping any test with a setter on Object.prototype.id.
+//   - MessageChannel loses to an already-pending timer, and Node and Bun order
+//     it differently.
+//
+// Re-queueing a microtask a bounded number of times does work, because each
+// re-queue goes to the *back* of the microtask queue: a caller's chain of k
+// hops all runs before round k+1. If the queue empties sooner the remaining
+// rounds simply run back-to-back, still inside the same checkpoint. So this
+// lands after any realistic continuation and always before the next task.
+//
+// The bound is what keeps it from being unbounded work; a chain longer than
+// this would see the transaction already inactive, which is also what a browser
+// does to anyone who awaits something slow mid-transaction.
+const MICROTASK_DRAIN_ROUNDS = 64;
+
+export const queueAfterCheckpoint = (fn: () => void): void => {
+    let remaining = MICROTASK_DRAIN_ROUNDS;
+    const step = () => {
+        remaining -= 1;
+        if (remaining > 0) {
+            queueMicrotask(step);
+        } else {
+            fn();
+        }
+    };
+    queueMicrotask(step);
+};

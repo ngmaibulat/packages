@@ -7,6 +7,7 @@ import type ObjectStore from "./ObjectStore.ts";
 import type { FDBCursorDirection, Key, KeyPath, Record } from "./types.ts";
 import type FDBTransaction from "../FDBTransaction.ts";
 import type FDBKeyRange from "../FDBKeyRange.ts";
+import { constructInternally } from "./webidl.ts";
 
 // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#dfn-index
 class Index {
@@ -108,10 +109,15 @@ class Index {
         const records = [];
         for (const record of this.records.values(range, direction)) {
             records.push(
-                new FDBRecord(
-                    structuredClone(record.key),
-                    structuredClone(this.rawObjectStore.getKey(record.value)),
-                    this.rawObjectStore.getValue(record.value),
+                constructInternally(
+                    () =>
+                        new FDBRecord(
+                            structuredClone(record.key),
+                            structuredClone(
+                                this.rawObjectStore.getKey(record.value),
+                            ),
+                            this.rawObjectStore.getValue(record.value),
+                        ),
                 ),
             );
             if (records.length >= count) {
