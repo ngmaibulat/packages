@@ -110,6 +110,45 @@ suite('Nexie.vip', () => {
     });
 });
 
+suite('zone attribution', () => {
+    // Both of these were broken while the database happened to be open already,
+    // and fine while it was opened lazily by the first operation -- which is
+    // exactly the kind of difference a suite that always opens lazily never
+    // sees. `enterTransactionScope` reaches the scope synchronously on an open
+    // database, so the caller's `await` reads `then` at a moment when the echo
+    // front is the scope's own zone; a derived promise created there attributed
+    // the caller's work to the scope.
+
+    test('a fire-and-forget scope completes on an already-open database', async () => {
+        await db.open();
+
+        await db.transaction('rw', db.table('friends'), () => {
+            // Started, never awaited, never returned.
+            void db.table('friends').add({ name: 'a', age: 1 });
+            void db.table('friends').add({ name: 'b', age: 2 });
+        });
+
+        assert.equal(await db.table('friends').count(), 2);
+    });
+
+    test('the diagnosis fires whether the database was open or not', async () => {
+        await db.open();
+
+        let caught: unknown;
+        await db
+            .transaction('rw', db.table('friends'), async () => {
+                await db.table('friends').add({ name: 'Alice', age: 30 });
+                await foreign('nothing');
+                await db.table('friends').add({ name: 'Bob', age: 40 });
+            })
+            .catch((error) => {
+                caught = error;
+            });
+
+        assert.equal((caught as Error).name, 'ForeignAwaitError');
+    });
+});
+
 suite('ForeignAwaitError', () => {
     test('a foreign await inside a scope names the problem', async () => {
         let caught: unknown;

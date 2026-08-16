@@ -87,8 +87,14 @@ export class NexiePromise<T> implements PromiseLike<T> {
             resolve: (value: T | PromiseLike<T>) => void,
             reject: (reason?: unknown) => void,
         ) => void,
+        /**
+         * Which zone this promise's outstanding work belongs to. Internal, and
+         * only `_thenIn` passes it -- see the note there for why the ambient
+         * zone is the wrong answer for a derived promise.
+         */
+        zone?: Zone,
     ) {
-        this._zone = getZone();
+        this._zone = zone ?? getZone();
         retain(this._zone);
 
         if (executor) {
@@ -212,13 +218,25 @@ export class NexiePromise<T> implements PromiseLike<T> {
             this._thenIn(zoneAtAccess, onFulfilled, onRejected);
     }
 
-    /** Registers a continuation in an explicit zone. */
+    /**
+     * Registers a continuation in an explicit zone.
+     *
+     * The derived promise is created in that same zone, NOT in the ambient one.
+     * This matters more than it looks: for `await p`, the engine calls the
+     * closure the `then` getter returned one microtask later, from inside
+     * `PromiseResolveThenableJob`, and by then the ambient zone is whatever the
+     * echo front happens to be — the zone of some unrelated scope. Creating the
+     * derived promise there attributes the caller's outstanding work to that
+     * scope, which makes `follow()` wait on a promise that only settles when the
+     * caller is done. A fire-and-forget `db.transaction()` on an already-open
+     * database hung outright that way.
+     */
     _thenIn<R1 = T, R2 = never>(
         zone: Zone,
         onFulfilled?: Fulfilled<T, R1>,
         onRejected?: Rejected<R2>,
     ): NexiePromise<R1 | R2> {
-        const result = new NexiePromise<R1 | R2>();
+        const result = new NexiePromise<R1 | R2>(undefined, zone);
 
         const listener: Listener = {
             zone,

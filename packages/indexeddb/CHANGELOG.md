@@ -1,3 +1,38 @@
+# 0.1.4 — a zone attribution bug, and a hang it caused
+
+**Fixes a hang in 0.1.2 and 0.1.3.** A fire-and-forget transaction scope — one whose
+body starts operations without returning or awaiting them — never resolved if the
+database happened to be **already open**:
+
+```ts
+await db.open();
+await db.transaction('rw', db.friends, () => {
+    db.friends.add({ name: 'a' });   // started, not awaited
+});                                  // never resolves
+```
+
+The same root cause silently disabled `ForeignAwaitError` under the same condition,
+so a foreign `await` reported the older, vaguer `PrematureCommitError` instead.
+
+The cause is one line in the promise engine. `p.then(cb)` registers the continuation
+in the zone captured when `then` was read, but the *derived* promise was created in
+whatever zone happened to be ambient when the continuation was registered. For an
+`await`, that registration runs a microtask later from inside
+`PromiseResolveThenableJob`, where the ambient zone is the echo front — some other
+scope's zone. So the caller's outstanding work was attributed to that scope, and
+`follow()` waited for a promise that could only settle once the caller was finished.
+The derived promise is now created in the zone it belongs to.
+
+It reproduced only with an already-open database because that is the path where
+`db.transaction()` reaches the scope synchronously; opening lazily inserts a
+microtask that moved the echo front out of the way. The suite opened lazily
+everywhere, which is why it went unseen — there are now tests for both shapes with
+the database explicitly opened first.
+
+Also: `liveQuery` invalidation distinguishes "read the displaced records and found
+none" from "did not read them". A `put` that inserts rather than replaces displaces
+nothing, which is exact, and no longer widens to the whole index.
+
 # 0.1.3 — Nexie completes its API surface
 
 The `.` entry is untouched again: `dist/index.js` is byte-identical, verified by

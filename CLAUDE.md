@@ -316,6 +316,14 @@ Two more things that are load-bearing, both found by tests rather than reasoning
   resume jobs. A listener whose job enqueues no resume job hands its zone to whatever
   runs next — a nested scope's zone leaked into the caller's continuation exactly
   this way. `Transaction._zoneLost` is computed on demand for that reason.
+- **A derived promise belongs to the zone `then` was read in, not the ambient one.**
+  `_thenIn` is called a microtask later from `PromiseResolveThenableJob`, where the
+  ambient zone is the echo front — some unrelated scope. Creating the derived promise
+  there attributes the caller's work to that scope and `follow()` then waits on it: a
+  fire-and-forget `db.transaction()` on an already-open database hung outright.
+  **Test both open paths.** Bugs of this family reproduce only when
+  `db.transaction()` reaches the scope synchronously; opening lazily inserts a
+  microtask that hides them, and a suite that always opens lazily sees nothing.
 
 `erasableSyntaxOnly` is set: no parameter properties, no enums. `Symbol.observable`
 is read off `Symbol` at runtime with an `'@@observable'` fallback rather than

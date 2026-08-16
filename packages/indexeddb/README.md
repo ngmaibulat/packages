@@ -729,7 +729,7 @@ pnpm run test        # node:test against @aibulat/indexeddb-impl
 pnpm run test:bun    # the same suite under Bun, and the totals must match
 ```
 
-The suite is 425 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Some of the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
+The suite is 428 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Some of the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
 
 It must report **identical totals under Node and Bun**. That is not ceremony: Nexie's transaction zone rests on the normative ordering of `Await` and promise-resolve-thenable jobs, and Bun is JSC where Node is V8. A divergence there is a bug in the design rather than a runtime quirk, which is why there are no per-runtime expectations to absorb one.
 
