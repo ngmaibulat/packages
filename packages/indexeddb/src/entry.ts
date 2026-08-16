@@ -1,58 +1,88 @@
 import { wrap } from './wrap-idb-value.ts';
 
+/**
+ * The `upgrade` callback of {@link OpenDBCallbacks}.
+ *
+ * Exported as a named type so a migration can be written as a standalone
+ * function and still be checked against the schema.
+ *
+ * @param database A database instance that you can use to add/remove stores and indexes.
+ * @param oldVersion Last version of the database opened by the user.
+ * @param newVersion Whatever new version you provided.
+ * @param transaction The transaction for this upgrade.
+ * This is useful if you need to get data from other stores as part of a migration.
+ * @param event The event object for the associated 'upgradeneeded' event.
+ */
+export type OpenDBUpgradeCallback<DBTypes extends DBSchema | unknown> = (
+  database: IDBPDatabase<DBTypes>,
+  oldVersion: number,
+  newVersion: number | null,
+  transaction: IDBPTransaction<DBTypes, StoreNames<DBTypes>[], 'versionchange'>,
+  event: IDBVersionChangeEvent,
+) => void;
+
+/**
+ * The `blocked` callback of {@link OpenDBCallbacks}.
+ *
+ * @param currentVersion Version of the database that's blocking this one.
+ * @param blockedVersion The version of the database being blocked (whatever version you provided to `openDB`).
+ * @param event The event object for the associated `blocked` event.
+ */
+export type OpenDBBlockedCallback = (
+  currentVersion: number,
+  blockedVersion: number | null,
+  event: IDBVersionChangeEvent,
+) => void;
+
+/**
+ * The `blocking` callback of {@link OpenDBCallbacks}.
+ *
+ * @param currentVersion Version of the open database (whatever version you provided to `openDB`).
+ * @param blockedVersion The version of the database that's being blocked.
+ * @param event The event object for the associated `versionchange` event.
+ */
+export type OpenDBBlockingCallback = (
+  currentVersion: number,
+  blockedVersion: number | null,
+  event: IDBVersionChangeEvent,
+) => void;
+
+/**
+ * The `terminated` callback of {@link OpenDBCallbacks}.
+ */
+export type OpenDBTerminatedCallback = () => void;
+
+/**
+ * The `blocked` callback of {@link DeleteDBCallbacks}.
+ *
+ * @param currentVersion Version of the database that's blocking the delete operation.
+ * @param event The event object for the associated `versionchange` event.
+ */
+export type DeleteDBBlockedCallback = (
+  currentVersion: number,
+  event: IDBVersionChangeEvent,
+) => void;
+
 export interface OpenDBCallbacks<DBTypes extends DBSchema | unknown> {
   /**
    * Called if this version of the database has never been opened before. Use it to specify the
    * schema for the database.
-   *
-   * @param database A database instance that you can use to add/remove stores and indexes.
-   * @param oldVersion Last version of the database opened by the user.
-   * @param newVersion Whatever new version you provided.
-   * @param transaction The transaction for this upgrade.
-   * This is useful if you need to get data from other stores as part of a migration.
-   * @param event The event object for the associated 'upgradeneeded' event.
    */
-  upgrade?(
-    database: IDBPDatabase<DBTypes>,
-    oldVersion: number,
-    newVersion: number | null,
-    transaction: IDBPTransaction<
-      DBTypes,
-      StoreNames<DBTypes>[],
-      'versionchange'
-    >,
-    event: IDBVersionChangeEvent,
-  ): void;
+  upgrade?: OpenDBUpgradeCallback<DBTypes>;
   /**
    * Called if there are older versions of the database open on the origin, so this version cannot
    * open.
-   *
-   * @param currentVersion Version of the database that's blocking this one.
-   * @param blockedVersion The version of the database being blocked (whatever version you provided to `openDB`).
-   * @param event The event object for the associated `blocked` event.
    */
-  blocked?(
-    currentVersion: number,
-    blockedVersion: number | null,
-    event: IDBVersionChangeEvent,
-  ): void;
+  blocked?: OpenDBBlockedCallback;
   /**
    * Called if this connection is blocking a future version of the database from opening.
-   *
-   * @param currentVersion Version of the open database (whatever version you provided to `openDB`).
-   * @param blockedVersion The version of the database that's being blocked.
-   * @param event The event object for the associated `versionchange` event.
    */
-  blocking?(
-    currentVersion: number,
-    blockedVersion: number | null,
-    event: IDBVersionChangeEvent,
-  ): void;
+  blocking?: OpenDBBlockingCallback;
   /**
    * Called if the browser abnormally terminates the connection.
    * This is not called when `db.close()` is called.
    */
-  terminated?(): void;
+  terminated?: OpenDBTerminatedCallback;
 }
 
 /**
@@ -114,11 +144,8 @@ export function openDB<DBTypes extends DBSchema | unknown = unknown>(
 export interface DeleteDBCallbacks {
   /**
    * Called if there are connections to this database open, so it cannot be deleted.
-   *
-   * @param currentVersion Version of the database that's blocking the delete operation.
-   * @param event The event object for the associated `blocked` event.
    */
-  blocked?(currentVersion: number, event: IDBVersionChangeEvent): void;
+  blocked?: DeleteDBBlockedCallback;
 }
 
 /**
@@ -145,7 +172,7 @@ export function deleteDB(
   return wrap(request).then(() => undefined);
 }
 
-export { unwrap, wrap } from './wrap-idb-value.ts';
+export { ignoreConstraints, unwrap, wrap } from './wrap-idb-value.ts';
 
 // === The rest of this file is type defs ===
 type KeyToKeyNoIndex<T> = {
@@ -160,11 +187,19 @@ export interface DBSchema {
   [s: string]: DBSchemaValue;
 }
 
-interface IndexKeys {
+/**
+ * A map of index names to the type of key within that index.
+ */
+export interface IndexKeys {
   [s: string]: IDBValidKey;
 }
 
-interface DBSchemaValue {
+/**
+ * The description of a single object store within a {@link DBSchema}.
+ *
+ * Exported so a schema can be assembled from per-store types across files.
+ */
+export interface DBSchemaValue {
   key: IDBValidKey;
   value: any;
   indexes?: IndexKeys;
@@ -278,7 +313,7 @@ export interface TypedDOMStringList<T extends string> extends DOMStringList {
     : DOMStringListSymbolIteratorType & Iterator<T>;
 }
 
-interface IDBTransactionOptions {
+export interface IDBTransactionOptions {
   /**
    * The durability of the transaction.
    *
@@ -290,9 +325,110 @@ interface IDBTransactionOptions {
   durability?: 'default' | 'strict' | 'relaxed';
 }
 
-export interface IDBPDatabase<
-  DBTypes extends DBSchema | unknown = unknown,
-> extends IDBPDatabaseExtends {
+/**
+ * Options for the `getAll`, `getAllKeys` and `getAllRecords` methods of an
+ * object store.
+ *
+ * A store is only ever iterated in key order, so `direction` is limited to
+ * `next` and `prev` here; the `unique` directions are meaningful on an index.
+ */
+export interface IDBPStoreGetAllOptions<
+  DBTypes extends DBSchema | unknown,
+  StoreName extends StoreNames<DBTypes>,
+> {
+  /**
+   * Only return records matching this key or range.
+   */
+  query?: StoreKey<DBTypes, StoreName> | IDBKeyRange | null;
+  /**
+   * Maximum number of records to return.
+   */
+  count?: number;
+  /**
+   * The order to return records in. Defaults to `next`.
+   */
+  direction?: 'next' | 'prev';
+}
+
+/**
+ * Options for the `getAll`, `getAllKeys` and `getAllRecords` methods of an
+ * index.
+ */
+export interface IDBPIndexGetAllOptions<
+  DBTypes extends DBSchema | unknown,
+  StoreName extends StoreNames<DBTypes>,
+  IndexName extends IndexNames<DBTypes, StoreName>,
+> {
+  /**
+   * Only return records matching this key or range.
+   */
+  query?: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange | null;
+  /**
+   * Maximum number of records to return.
+   */
+  count?: number;
+  /**
+   * The order to return records in. Defaults to `next`.
+   */
+  direction?: IDBCursorDirection;
+}
+
+/**
+ * A record as returned by `getAllRecords` on an object store.
+ */
+export interface IDBPStoreRecord<
+  DBTypes extends DBSchema | unknown,
+  StoreName extends StoreNames<DBTypes>,
+> {
+  key: StoreKey<DBTypes, StoreName>;
+  primaryKey: StoreKey<DBTypes, StoreName>;
+  value: StoreValue<DBTypes, StoreName>;
+}
+
+/**
+ * A record as returned by `getAllRecords` on an index. `key` is the index key,
+ * `primaryKey` the key within the store.
+ */
+export interface IDBPIndexRecord<
+  DBTypes extends DBSchema | unknown,
+  StoreName extends StoreNames<DBTypes>,
+  IndexName extends IndexNames<DBTypes, StoreName>,
+> {
+  key: IndexKey<DBTypes, StoreName, IndexName>;
+  primaryKey: StoreKey<DBTypes, StoreName>;
+  value: StoreValue<DBTypes, StoreName>;
+}
+
+/**
+ * `typeof Symbol.dispose`, or `never` where the running TypeScript `lib` has
+ * no explicit resource management (it lives in `ESNext.Disposable`).
+ *
+ * Keying the member off this means the declaration simply disappears for a
+ * consumer on a narrower `lib`, rather than failing to compile the way an
+ * unconditional reference to a missing lib type would.
+ */
+type DisposeKey = typeof Symbol extends { dispose: infer Key extends symbol }
+  ? Key
+  : never;
+
+/**
+ * The `Symbol.dispose` half of {@link IDBPDatabase}, split out so it can
+ * collapse to `{}` when the key is unavailable.
+ */
+export type IDBPDatabaseDisposable = {
+  /**
+   * Closes the connection at the end of the enclosing scope.
+   *
+   * ```ts
+   * using db = await openDB('my-db', 1);
+   * // db.close() runs here
+   * ```
+   */
+  [Key in DisposeKey]: () => void;
+};
+
+export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
+  extends IDBPDatabaseExtends, IDBPDatabaseDisposable {
   /**
    * The names of stores in the database.
    */
@@ -325,21 +461,21 @@ export interface IDBPDatabase<
    * @param options
    */
   transaction<
-    Name extends StoreNames<DBTypes>,
-    Mode extends IDBTransactionMode = 'readonly',
-  >(
-    storeNames: Name,
-    mode?: Mode,
-    options?: IDBTransactionOptions,
-  ): IDBPTransaction<DBTypes, [Name], Mode>;
-  transaction<
-    Names extends ArrayLike<StoreNames<DBTypes>>,
+    Names extends StoreNames<DBTypes> | ArrayLike<StoreNames<DBTypes>>,
     Mode extends IDBTransactionMode = 'readonly',
   >(
     storeNames: Names,
     mode?: Mode,
     options?: IDBTransactionOptions,
-  ): IDBPTransaction<DBTypes, Names, Mode>;
+  ): IDBPTransaction<
+    DBTypes,
+    Names extends StoreNames<DBTypes>
+      ? [Names]
+      : Names extends ArrayLike<StoreNames<DBTypes>>
+        ? Names
+        : never,
+    Mode
+  >;
 
   // Shortcut methods
 
@@ -460,6 +596,10 @@ export interface IDBPDatabase<
    */
   getAll<Name extends StoreNames<DBTypes>>(
     storeName: Name,
+    options: IDBPStoreGetAllOptions<DBTypes, Name>,
+  ): Promise<StoreValue<DBTypes, Name>[]>;
+  getAll<Name extends StoreNames<DBTypes>>(
+    storeName: Name,
     query?: StoreKey<DBTypes, Name> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreValue<DBTypes, Name>[]>;
@@ -480,6 +620,14 @@ export interface IDBPDatabase<
   >(
     storeName: Name,
     indexName: IndexName,
+    options: IDBPIndexGetAllOptions<DBTypes, Name, IndexName>,
+  ): Promise<StoreValue<DBTypes, Name>[]>;
+  getAllFromIndex<
+    Name extends StoreNames<DBTypes>,
+    IndexName extends IndexNames<DBTypes, Name>,
+  >(
+    storeName: Name,
+    indexName: IndexName,
     query?: IndexKey<DBTypes, Name, IndexName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreValue<DBTypes, Name>[]>;
@@ -493,6 +641,10 @@ export interface IDBPDatabase<
    * @param query
    * @param count Maximum number of keys to return.
    */
+  getAllKeys<Name extends StoreNames<DBTypes>>(
+    storeName: Name,
+    options: IDBPStoreGetAllOptions<DBTypes, Name>,
+  ): Promise<StoreKey<DBTypes, Name>[]>;
   getAllKeys<Name extends StoreNames<DBTypes>>(
     storeName: Name,
     query?: StoreKey<DBTypes, Name> | IDBKeyRange | null,
@@ -515,9 +667,54 @@ export interface IDBPDatabase<
   >(
     storeName: Name,
     indexName: IndexName,
+    options: IDBPIndexGetAllOptions<DBTypes, Name, IndexName>,
+  ): Promise<StoreKey<DBTypes, Name>[]>;
+  getAllKeysFromIndex<
+    Name extends StoreNames<DBTypes>,
+    IndexName extends IndexNames<DBTypes, Name>,
+  >(
+    storeName: Name,
+    indexName: IndexName,
     query?: IndexKey<DBTypes, Name, IndexName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreKey<DBTypes, Name>[]>;
+  /**
+   * Retrieves the full records in a store matching the query, each with its
+   * key, primary key and value.
+   *
+   * Requires browser support for `getAllRecords` (Chrome/Edge 141+).
+   *
+   * This is a shortcut that creates a transaction for this single action. If you need to do more
+   * than one action, create a transaction instead.
+   *
+   * @param storeName Name of the store.
+   * @param options
+   */
+  getAllRecords<Name extends StoreNames<DBTypes>>(
+    storeName: Name,
+    options?: IDBPStoreGetAllOptions<DBTypes, Name>,
+  ): Promise<IDBPStoreRecord<DBTypes, Name>[]>;
+  /**
+   * Retrieves the full records in an index matching the query, each with its
+   * index key, primary key and value.
+   *
+   * Requires browser support for `getAllRecords` (Chrome/Edge 141+).
+   *
+   * This is a shortcut that creates a transaction for this single action. If you need to do more
+   * than one action, create a transaction instead.
+   *
+   * @param storeName Name of the store.
+   * @param indexName Name of the index within the store.
+   * @param options
+   */
+  getAllRecordsFromIndex<
+    Name extends StoreNames<DBTypes>,
+    IndexName extends IndexNames<DBTypes, Name>,
+  >(
+    storeName: Name,
+    indexName: IndexName,
+    options?: IDBPIndexGetAllOptions<DBTypes, Name, IndexName>,
+  ): Promise<IDBPIndexRecord<DBTypes, Name, IndexName>[]>;
   /**
    * Retrieves the key of the first record in a store that matches the query.
    *
@@ -703,6 +900,9 @@ export interface IDBPObjectStore<
    * @param count Maximum number of values to return.
    */
   getAll(
+    options: IDBPStoreGetAllOptions<DBTypes, StoreName>,
+  ): Promise<StoreValue<DBTypes, StoreName>[]>;
+  getAll(
     query?: StoreKey<DBTypes, StoreName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreValue<DBTypes, StoreName>[]>;
@@ -713,9 +913,23 @@ export interface IDBPObjectStore<
    * @param count Maximum number of keys to return.
    */
   getAllKeys(
+    options: IDBPStoreGetAllOptions<DBTypes, StoreName>,
+  ): Promise<StoreKey<DBTypes, StoreName>[]>;
+  getAllKeys(
     query?: StoreKey<DBTypes, StoreName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreKey<DBTypes, StoreName>[]>;
+  /**
+   * Retrieves the full records matching the query, each with its key, primary
+   * key and value.
+   *
+   * Requires browser support for `getAllRecords` (Chrome/Edge 141+).
+   *
+   * @param options
+   */
+  getAllRecords(
+    options?: IDBPStoreGetAllOptions<DBTypes, StoreName>,
+  ): Promise<IDBPStoreRecord<DBTypes, StoreName>[]>;
   /**
    * Retrieves the key of the first record that matches the query.
    *
@@ -801,6 +1015,19 @@ export interface IDBPObjectStore<
       Mode
     >
   >;
+  /**
+   * Iterate over the keys of records matching the query, without reading their
+   * values.
+   *
+   * @param query If null, all records match.
+   * @param direction
+   */
+  iterateKeys(
+    query?: StoreKey<DBTypes, StoreName> | IDBKeyRange | null,
+    direction?: IDBCursorDirection,
+  ): AsyncIterableIterator<
+    IDBPCursorIteratorValue<DBTypes, TxStores, StoreName, unknown, Mode>
+  >;
 }
 
 type IDBPIndexExtends = Omit<
@@ -853,6 +1080,9 @@ export interface IDBPIndex<
    * @param count Maximum number of values to return.
    */
   getAll(
+    options: IDBPIndexGetAllOptions<DBTypes, StoreName, IndexName>,
+  ): Promise<StoreValue<DBTypes, StoreName>[]>;
+  getAll(
     query?: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreValue<DBTypes, StoreName>[]>;
@@ -863,9 +1093,23 @@ export interface IDBPIndex<
    * @param count Maximum number of keys to return.
    */
   getAllKeys(
+    options: IDBPIndexGetAllOptions<DBTypes, StoreName, IndexName>,
+  ): Promise<StoreKey<DBTypes, StoreName>[]>;
+  getAllKeys(
     query?: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreKey<DBTypes, StoreName>[]>;
+  /**
+   * Retrieves the full records matching the query, each with its index key,
+   * primary key and value.
+   *
+   * Requires browser support for `getAllRecords` (Chrome/Edge 141+).
+   *
+   * @param options
+   */
+  getAllRecords(
+    options?: IDBPIndexGetAllOptions<DBTypes, StoreName, IndexName>,
+  ): Promise<IDBPIndexRecord<DBTypes, StoreName, IndexName>[]>;
   /**
    * Retrieves the key of the first record that matches the query.
    *
@@ -935,6 +1179,21 @@ export interface IDBPIndex<
       IndexName,
       Mode
     >
+  >;
+  /**
+   * Iterate over the keys of records matching the query, without reading their
+   * values.
+   *
+   * Resolves with null if no matches are found.
+   *
+   * @param query If null, all records match.
+   * @param direction
+   */
+  iterateKeys(
+    query?: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange | null,
+    direction?: IDBCursorDirection,
+  ): AsyncIterableIterator<
+    IDBPCursorIteratorValue<DBTypes, TxStores, StoreName, IndexName, Mode>
   >;
 }
 

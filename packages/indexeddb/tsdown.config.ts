@@ -3,7 +3,10 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
     // Single entry. src/index.ts is the composition root: it re-exports the
     // public surface from entry.ts and pulls database-extras and async-iterators
-    // in for their side effects. See the sideEffects note in package.json.
+    // in for their side effects -- each installs proxy traps via replaceTraps.
+    // That is why package.json must NOT declare `sideEffects: false`: a bundler
+    // taking that at its word could drop those imports and silently remove the
+    // db.get shortcuts and the async iterators.
     entry: ["src/index.ts"],
     format: ["esm"],
     outDir: "dist",

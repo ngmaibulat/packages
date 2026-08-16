@@ -2,7 +2,16 @@ import type { Func } from './util.ts';
 import { replaceTraps } from './wrap-idb-value.ts';
 import type { IDBPDatabase, IDBPIndex } from './entry.ts';
 
-const readMethods = ['get', 'getKey', 'getAll', 'getAllKeys', 'count'];
+// getAllRecords is Chrome/Edge 141+. getMethod bails when the underlying
+// prototype lacks the method, so listing it here is safe everywhere.
+const readMethods = [
+  'get',
+  'getKey',
+  'getAll',
+  'getAllKeys',
+  'getAllRecords',
+  'count',
+];
 const writeMethods = ['put', 'add', 'delete', 'clear'];
 const cachedMethods = new Map<string, Func>();
 

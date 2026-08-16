@@ -1,9 +1,91 @@
+# 0.1.1 — bug fixes and additions upstream never shipped
+
+This is where the fork stops being a mirror of idb 8.0.3 and becomes an **API-compatible
+superset**. Everything idb does still works the same way; the changes below either fix behaviour
+that was already wrong or add surface that upstream accepted in principle and never merged.
+Upstream has not pushed a commit since 2025-05-07.
+
+Nothing here is breaking for a consumer of 0.1.0, with one exception noted under *Types*.
+
+### Fixes
+
+- **`NaN` no longer throws.** `wrap()` cached its result whenever `newValue !== value`, which is
+  true for `NaN`, so a primitive reached `WeakMap.set` and threw
+  `TypeError: Invalid value used as weak map key`. The throw happened inside the request's success
+  handler, which aborted the transaction — reading a stored `NaN` took the whole thing down. The
+  guard is `Object.is` now. (upstream
+  [#315](https://github.com/jakearchibald/idb/issues/315))
+- **`tx.done` rejects with the real error.** A request's `error` event bubbles to the transaction
+  *before* the transaction is aborted with it, so `tx.error` is still `null` while it dispatches and
+  the only reachable cause is `event.target.error`. idb read `tx.error`, found nothing, and rejected
+  with a fabricated, stackless, message-less `DOMException('AbortError')` — discarding the
+  `ConstraintError` or `QuotaExceededError` that actually happened. You now get the real error, and
+  an `AbortError` only when there genuinely was no other cause. (upstream
+  [#166](https://github.com/jakearchibald/idb/issues/166),
+  [#326](https://github.com/jakearchibald/idb/issues/326),
+  [#334](https://github.com/jakearchibald/idb/issues/334); improves on the unmerged
+  [PR #338](https://github.com/jakearchibald/idb/pull/338), which fixed the error but kept the
+  wrong trigger)
+- **`tx.done` no longer rejects for a transaction that committed.** An error that is
+  `preventDefault()`ed does not abort the transaction, but idb rejected on the `error` event
+  regardless, reporting failure for a transaction whose data was safely written. `done` now settles
+  on `complete`/`abort`, which is what those events mean. Not filed upstream.
+- **No more unhandled rejections from `tx.done`.** The promise is created eagerly when the
+  transaction is wrapped, so a failure before the caller reached `await tx.done` — or a caller that
+  never awaited it, which is normal for a read — surfaced as an unhandled rejection. Reported on
+  iOS, where WebKit aborts transactions when the app is backgrounded. A no-op handler is attached
+  to the cached promise; `await tx.done` is unaffected. (upstream
+  [#320](https://github.com/jakearchibald/idb/issues/320))
+
+### Additions
+
+- **`getAll`, `getAllKeys` and `getAllRecords` take an options object**, with `query`, `count` and
+  `direction` — the only way to read records in reverse. On stores, indexes, and the `db.*`
+  shortcuts. `getAllRecords` returns `{ key, primaryKey, value }`. Needs browser support for
+  `getAllRecords` (Chrome/Edge 141+). (upstream
+  [#349](https://github.com/jakearchibald/idb/issues/349), unmerged
+  [PR #350](https://github.com/jakearchibald/idb/pull/350))
+- **`iterateKeys()`** on stores and indexes — `iterate()`'s partner over `openKeyCursor`, for
+  iterating keys without reading values. (upstream
+  [#112](https://github.com/jakearchibald/idb/issues/112))
+- **`ignoreConstraints(operation)`** — lets a duplicate key be skipped without aborting the whole
+  transaction, resolving `undefined` for the skipped record. The semantics upstream specified but
+  never implemented, and only possible once `tx.done` stopped rejecting on a handled error.
+  (upstream [#256](https://github.com/jakearchibald/idb/issues/256))
+- **`using db = await openDB(…)`** closes the connection at the end of the scope, via
+  `Symbol.dispose`. (upstream [#300](https://github.com/jakearchibald/idb/issues/300))
+
+### Types
+
+- Exported `DBSchemaValue`, `IndexKeys` and `IDBTransactionOptions`, and hoisted the `openDB`/
+  `deleteDB` callbacks into named types (`OpenDBUpgradeCallback`, `OpenDBBlockedCallback`,
+  `OpenDBBlockingCallback`, `OpenDBTerminatedCallback`, `DeleteDBBlockedCallback`), so a schema or
+  a migration can be assembled across files. (upstream
+  [#237](https://github.com/jakearchibald/idb/issues/237),
+  [#314](https://github.com/jakearchibald/idb/issues/314))
+- `transaction()` is one generic rather than two overloads, so an editor autocompletes store-name
+  literals for the array form. **The one visible change:**
+  `Parameters<typeof db.transaction>[0]` is now `StoreName | ArrayLike<StoreName>` rather than only
+  `ArrayLike<StoreName>`. Every call that compiled before still compiles. (unmerged
+  [PR #345](https://github.com/jakearchibald/idb/pull/345))
+- `Symbol.dispose` is declared through a key that collapses to `never` when the consumer's `lib`
+  lacks `ESNext.Disposable`, so the member disappears instead of failing to compile. This is
+  deliberately not the mistake upstream made with `WeakKey` in
+  [#331](https://github.com/jakearchibald/idb/issues/331).
+
+Considered and deliberately left out: PR #333 (wrapping errors in `Error` — invalid as submitted,
+breaking, and the real benefit is delivered above), PR #291 / #275 (union narrowing — breaking to
+the exported type surface), PR #252 / #150 (auto-increment key typing — ships a TODO in a public
+`.d.ts`), and #346 / #319 / #230 (the `never` collapse for union store names — one real root cause,
+but non-trivial variance work).
+
 # 0.1.0 — forked as `@aibulat/indexeddb`
 
 Forked from [`idb`](https://github.com/jakearchibald/idb) at v8.0.3 and moved into the
-[`@aibulat/packages`](https://github.com/ngmaibulat/packages) workspace. **The library API is
-unchanged** — `openDB`, `deleteDB`, `wrap`, `unwrap` and every type behave exactly as in idb 8.0.3.
-The version resets to 0.1.0 because this is a new package name, not a continuation of idb's series.
+[`@aibulat/packages`](https://github.com/ngmaibulat/packages) workspace. The library API is
+unchanged at this version — `openDB`, `deleteDB`, `wrap`, `unwrap` and every type behave exactly as
+in idb 8.0.3. (0.1.1 above is where that stops being true, in an additive direction.) The version
+resets to 0.1.0 because this is a new package name, not a continuation of idb's series.
 
 Packaging changes:
 
@@ -21,7 +103,7 @@ Packaging changes:
 Development changes (no effect on consumers):
 
 - Tests moved from mocha-in-a-real-browser to `node:test` against `fake-indexeddb`, so they run in
-  CI. All 91 tests are preserved.
+  CI. All 91 tests are preserved. (0.1.1 adds 26 more.)
 - Fixed a latent type assertion in the suite: `createIndex` propagates `TxStores` as
   `ArrayLike<StoreNames<DBTypes>>`, not `[StoreName]`. Upstream asserted the latter and only passed
   because its test project resolved `../src` through the emitted `.d.ts` rather than the source.

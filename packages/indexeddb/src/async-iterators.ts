@@ -33,45 +33,55 @@ const cursorIteratorTraps: ProxyHandler<any> = {
   },
 };
 
-async function* iterate(
-  this: IDBPObjectStore | IDBPIndex | IDBPCursor,
-  ...args: any[]
-): AsyncIterableIterator<any> {
-  // tslint:disable-next-line:no-this-assignment
-  let cursor: typeof this | null = this;
+// `iterate` and `iterateKeys` differ only in which cursor they open, so the
+// generator is built once per method rather than written out twice.
+function makeIterator(openMethod: 'openCursor' | 'openKeyCursor') {
+  return async function* (
+    this: IDBPObjectStore | IDBPIndex | IDBPCursor,
+    ...args: any[]
+  ): AsyncIterableIterator<any> {
+    // tslint:disable-next-line:no-this-assignment
+    let cursor: typeof this | null = this;
 
-  if (!(cursor instanceof IDBCursor)) {
-    cursor = await (cursor as IDBPObjectStore | IDBPIndex).openCursor(...args);
-  }
+    if (!(cursor instanceof IDBCursor)) {
+      cursor = await (cursor as any)[openMethod](...args);
+    }
 
-  if (!cursor) return;
+    if (!cursor) return;
 
-  cursor = cursor as IDBPCursor;
-  const proxiedCursor = new Proxy(cursor, cursorIteratorTraps);
-  ittrProxiedCursorToOriginalProxy.set(proxiedCursor, cursor);
-  // Map this double-proxy back to the original, so other cursor methods work.
-  reverseTransformCache.set(proxiedCursor, unwrap(cursor));
+    cursor = cursor as IDBPCursor;
+    const proxiedCursor = new Proxy(cursor, cursorIteratorTraps);
+    ittrProxiedCursorToOriginalProxy.set(proxiedCursor, cursor);
+    // Map this double-proxy back to the original, so other cursor methods work.
+    reverseTransformCache.set(proxiedCursor, unwrap(cursor));
 
-  while (cursor) {
-    yield proxiedCursor;
-    // If one of the advancing methods was not called, call continue().
-    cursor = await (advanceResults.get(proxiedCursor) || cursor.continue());
-    advanceResults.delete(proxiedCursor);
-  }
+    while (cursor) {
+      yield proxiedCursor;
+      // If one of the advancing methods was not called, call continue().
+      cursor = await (advanceResults.get(proxiedCursor) || cursor.continue());
+      advanceResults.delete(proxiedCursor);
+    }
+  };
 }
+
+const iterate = makeIterator('openCursor');
+const iterateKeys = makeIterator('openKeyCursor');
 
 function isIteratorProp(target: any, prop: number | string | symbol) {
   return (
     (prop === Symbol.asyncIterator &&
       instanceOfAny(target, [IDBIndex, IDBObjectStore, IDBCursor])) ||
-    (prop === 'iterate' && instanceOfAny(target, [IDBIndex, IDBObjectStore]))
+    ((prop === 'iterate' || prop === 'iterateKeys') &&
+      instanceOfAny(target, [IDBIndex, IDBObjectStore]))
   );
 }
 
 replaceTraps((oldTraps) => ({
   ...oldTraps,
   get(target, prop, receiver) {
-    if (isIteratorProp(target, prop)) return iterate;
+    if (isIteratorProp(target, prop)) {
+      return prop === 'iterateKeys' ? iterateKeys : iterate;
+    }
     return oldTraps.get!(target, prop, receiver);
   },
   has(target, prop) {

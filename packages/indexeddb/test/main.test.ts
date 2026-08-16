@@ -88,15 +88,20 @@ suite('IDBPDatabase', () => {
     const schemaDB = await openDBWithSchema();
     db = schemaDB as IDBPDatabase;
 
+    // A single generic covers both the one-store and the many-store call, so
+    // the parameter surfaces as the union rather than only the array form.
+    // That is what lets an editor autocomplete the store-name literals.
     typeAssert<
       IsExact<
         Parameters<typeof schemaDB.transaction>[0],
-        ArrayLike<'key-val-store' | 'object-store'>
+        | 'key-val-store'
+        | 'object-store'
+        | ArrayLike<'key-val-store' | 'object-store'>
       >
     >(true);
 
     typeAssert<
-      IsExact<Parameters<typeof db.transaction>[0], ArrayLike<string>>
+      IsExact<Parameters<typeof db.transaction>[0], string | ArrayLike<string>>
     >(true);
 
     // Function getters should return the same instance.

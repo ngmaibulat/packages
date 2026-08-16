@@ -3,8 +3,12 @@
         "target": "ES2023",
         /* DOM is what declares IDBFactory, IDBDatabase, IDBRequest and the rest
            of the IndexedDB surface this library proxies -- not the document.
-           `types: []` below keeps Node's globals out. */
-        "lib": ["ES2023", "DOM", "DOM.Iterable"],
+           `types: []` below keeps Node's globals out.
+           ESNext.Disposable is what declares Symbol.dispose, for `using db`.
+           Consumers do NOT need it: entry.ts keys that member off a type that
+           collapses to `never` when the lib is absent, so the declaration
+           disappears rather than erroring. See DisposeKey. */
+        "lib": ["ES2023", "ESNext.Disposable", "DOM", "DOM.Iterable"],
         "module": "nodenext",
         "moduleResolution": "nodenext",
 

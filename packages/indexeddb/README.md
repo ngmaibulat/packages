@@ -2,7 +2,7 @@
 
 IndexedDB with usability. A tiny (~1.9 kB brotli'd, zero runtime dependencies) library that mostly mirrors the IndexedDB API, but with small improvements that make a big difference to usability.
 
-> A fork of [`idb`](https://github.com/jakearchibald/idb) by Jake Archibald, tracking v8.0.3. The API is unchanged; this fork ships ESM only and is maintained as part of the [`@aibulat`](https://github.com/ngmaibulat/packages) workspace. See [LICENSE](LICENSE) for the retained upstream notice.
+> A fork of [`idb`](https://github.com/jakearchibald/idb) by Jake Archibald, forked at v8.0.3. It is an **API-compatible superset**: everything idb does works the same way, plus fixes and additions upstream has not shipped — see [Changes](#changes) for the list. Ships ESM only, and is maintained as part of the [`@aibulat`](https://github.com/ngmaibulat/packages) workspace. See [LICENSE](LICENSE) for the retained upstream notice.
 
 1. [Installation](#installation)
 1. [Changes](#changes)
@@ -17,6 +17,9 @@ IndexedDB with usability. A tiny (~1.9 kB brotli'd, zero runtime dependencies) l
    1. [`IDBTransaction` enhancements](#idbtransaction-enhancements)
    1. [`IDBCursor` enhancements](#idbcursor-enhancements)
    1. [Async iterators](#async-iterators)
+   1. [`getAll` options](#getall-options)
+   1. [`ignoreConstraints`](#ignoreconstraints)
+   1. [Closing with `using`](#closing-with-using)
 1. [Examples](#examples)
 1. [TypeScript](#typescript)
 
@@ -171,6 +174,8 @@ As a result, methods such as `store.put` may throw instead of returning a promis
 
 If you're using async functions, there's no observable difference.
 
+Because you get a promise rather than the `IDBRequest`, assigning `onsuccess` or `onerror` to the result does nothing — there is no request there to assign them to. Await the promise instead, or use [`unwrap`](#unwrap) to get the real `IDBRequest` back.
+
 ### Transaction lifetime
 
 TL;DR: **Do not `await` other things between the start and end of your transaction**, otherwise the transaction will close before you're done.
@@ -213,11 +218,11 @@ const value = await db.get(storeName, key);
 await db.put(storeName, value, key);
 ```
 
-The shortcuts are: `get`, `getKey`, `getAll`, `getAllKeys`, `count`, `put`, `add`, `delete`, and `clear`. Each method takes a `storeName` argument, the name of the object store, and the rest of the arguments are the same as the equivalent `IDBObjectStore` method.
+The shortcuts are: `get`, `getKey`, `getAll`, `getAllKeys`, `getAllRecords`, `count`, `put`, `add`, `delete`, and `clear`. Each method takes a `storeName` argument, the name of the object store, and the rest of the arguments are the same as the equivalent `IDBObjectStore` method.
 
 ### Shortcuts to get from an index
 
-The shortcuts are: `getFromIndex`, `getKeyFromIndex`, `getAllFromIndex`, `getAllKeysFromIndex`, and `countFromIndex`.
+The shortcuts are: `getFromIndex`, `getKeyFromIndex`, `getAllFromIndex`, `getAllKeysFromIndex`, `getAllRecordsFromIndex`, and `countFromIndex`.
 
 ```js
 // Get a value from an index:
@@ -253,6 +258,24 @@ await Promise.all([
 ```
 
 If you're writing to the database, `tx.done` is the signal that everything was successfully committed to the database. However, it's still beneficial to await the individual operations, as you'll see the error that caused the transaction to fail.
+
+`tx.done` rejects with the error that actually caused the failure — a `ConstraintError` for a duplicate key, a `QuotaExceededError` when storage is full — rather than a generic `AbortError`. Only an abort with no other cause, such as an explicit `tx.abort()`, gives you an `AbortError`.
+
+You don't have to await `tx.done`. For a read there's often no reason to, and a transaction that fails unobserved won't produce an unhandled rejection.
+
+A failed operation aborts its transaction for you, so you rarely need `tx.abort()` by hand. It matters when *your own* code throws part-way through, and you want the writes already made to roll back:
+
+```js
+const tx = db.transaction(storeName, 'readwrite');
+
+try {
+  await tx.store.put(await computeSomething(), 'key');
+  await tx.done;
+} catch (err) {
+  tx.abort();
+  throw err;
+}
+```
 
 ## `IDBCursor` enhancements
 
@@ -302,6 +325,57 @@ for await (const cursor of index.iterate('Douglas Adams')) {
   console.log(cursor.value);
 }
 ```
+
+`iterateKeys` is the same thing over `openKeyCursor`, for when you only need keys and would rather not read every value off disk:
+
+```js
+for await (const cursor of db.transaction('books').store.iterateKeys()) {
+  console.log(cursor.key);
+}
+```
+
+## `getAll` options
+
+`getAll`, `getAllKeys` and `getAllRecords` accept an options object in place of the `query`/`count` arguments, which is the only way to ask for records in reverse:
+
+```js
+const store = db.transaction('books').store;
+
+const newest = await store.getAll({ direction: 'prev', count: 10 });
+```
+
+`direction` is `'next' | 'prev'` on a store, and the full `IDBCursorDirection` on an index. `getAllRecords` returns `{ key, primaryKey, value }` objects rather than bare values, so one call gives you keys and values together.
+
+These need browser support for [`getAllRecords`](https://developer.mozilla.org/en-US/docs/Web/API/IDBObjectStore/getAllRecords) (Chrome/Edge 141+). Feature-detect with `'getAllRecords' in IDBObjectStore.prototype`.
+
+## `ignoreConstraints`
+
+By default a duplicate key aborts the whole transaction, so one bad record throws away an entire bulk insert. `ignoreConstraints` handles the `ConstraintError` at the request, leaving the transaction free to commit, and resolves with `undefined` for the record that was skipped:
+
+```js
+import { ignoreConstraints, openDB } from '@aibulat/indexeddb';
+
+const tx = db.transaction('books', 'readwrite');
+const keys = await Promise.all(
+  books.map((book) => ignoreConstraints(tx.store.add(book))),
+);
+await tx.done;
+// keys holds a key per book, and undefined where one already existed.
+```
+
+Any other error still rejects, and still aborts the transaction.
+
+## Closing with `using`
+
+A database is a disposable resource, so it closes itself at the end of the scope if you declare it with [`using`](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-2.html#using-declarations-and-explicit-resource-management):
+
+```ts
+using db = await openDB('my-db', 1);
+await db.put('keyval', 'hello', 'greeting');
+// db.close() runs here, however the scope exits.
+```
+
+This needs `Symbol.dispose`, which is TypeScript 5.2+ with `ESNext.Disposable` in your `lib`. Nothing is required of consumers who don't use it: the declaration disappears when the lib is absent, rather than failing to compile.
 
 # Examples
 
@@ -497,7 +571,7 @@ pnpm run typecheck   # both the src and test projects
 pnpm run test        # node:test against fake-indexeddb
 ```
 
-The suite is 91 tests over `node:test`, run against [`fake-indexeddb`](https://www.npmjs.com/package/fake-indexeddb) rather than a real browser, so it needs no web server and runs in CI. Roughly half the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
+The suite is 117 tests over `node:test`, run against [`fake-indexeddb`](https://www.npmjs.com/package/fake-indexeddb) rather than a real browser, so it needs no web server and runs in CI. Roughly half the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
 
 Run a single file or a single test:
 

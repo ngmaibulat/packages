@@ -5,9 +5,10 @@ you attach `onsuccess` and `onerror` to, and the type definitions know nothing a
 your schema. This library wraps the whole surface in `Proxy` objects so requests
 become promises and store names become literal types.
 
-It is a fork of [`idb`](https://github.com/jakearchibald/idb) by Jake Archibald at
-v8.0.3, with the API unchanged. It is ~1.9 kB brotli'd and has no runtime
-dependencies.
+It is a fork of [`idb`](https://github.com/jakearchibald/idb) by Jake Archibald,
+forked at v8.0.3 and maintained as an API-compatible superset: everything idb does
+works the same way, plus fixes and additions upstream never shipped. It is ~1.9 kB
+brotli'd and has no runtime dependencies.
 
 ## Install
 
@@ -33,6 +34,8 @@ function deleteDB(
 
 function wrap(value: IDBDatabase): IDBPDatabase;
 function unwrap<T>(wrapped: T): unknown;
+
+function ignoreConstraints<T>(operation: Promise<T>): Promise<T | undefined>;
 ```
 
 ## Use
@@ -88,13 +91,31 @@ for await (const cursor of tx.store) {
 }
 ```
 
+Use `iterateKeys()` when you only need keys and would rather not read every value.
+
+### Beyond idb
+
+```ts
+// Read in reverse, or ask for keys and values together.
+const newest = await db.getAll("articles", { direction: "prev", count: 10 });
+const records = await db.getAllRecords("articles");   // { key, primaryKey, value }
+
+// Skip duplicates without losing the rest of the batch.
+const tx = db.transaction("articles", "readwrite");
+await Promise.all(articles.map((a) => ignoreConstraints(tx.store.add(a))));
+await tx.done;
+
+// Close at the end of the scope.
+using db2 = await openDB("articles-db", 1);
+```
+
 ## Behaviour
 
 | | |
 |---|---|
 | Requests | Any method that would return an `IDBRequest` returns a promise instead. |
-| Transactions | `tx.done` is a promise for the transaction completing. `tx.store` is the store, when the transaction covers exactly one. |
-| Shortcuts | `db.get`, `getKey`, `getAll`, `getAllKeys`, `count`, `put`, `add`, `delete`, `clear` and the `…FromIndex` variants run a whole one-store transaction for you. |
+| Transactions | `tx.done` is a promise for the transaction completing, rejecting with the error that actually caused the failure. `tx.store` is the store, when the transaction covers exactly one. |
+| Shortcuts | `db.get`, `getKey`, `getAll`, `getAllKeys`, `getAllRecords`, `count`, `put`, `add`, `delete`, `clear` and the `…FromIndex` variants run a whole one-store transaction for you. |
 | Identity | Wrapped objects are cached, so `db.transaction === db.transaction`, and they still satisfy `instanceof IDBDatabase`. |
 | Escape hatch | `unwrap()` returns the underlying native object; `wrap()` enhances one you were handed. |
 
@@ -106,7 +127,9 @@ for await (const cursor of tx.store) {
   behaviour, not something the wrapper can hide.
 - **Some methods throw rather than reject.** The library cannot know in advance which
   members return an `IDBRequest`, so `store.put` and friends may throw synchronously.
-  Inside an `async` function there is no observable difference.
+  Inside an `async` function there is no observable difference. For the same reason,
+  assigning `onsuccess`/`onerror` to the returned promise does nothing — there is no
+  request there. Use `unwrap()` if you need the real one.
 - **Types degrade deliberately without a schema.** With no `DBSchema` type argument,
   store names widen to `string` and values to `any` — which is the documented way to
   opt out during multi-version migrations.
