@@ -1,6 +1,6 @@
 {
     "name": "@aibulat/indexeddb",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "A small wrapper that makes IndexedDB usable",
     "type": "module",
     "main": "./dist/index.js",
@@ -60,7 +60,7 @@
         "@types/node": "^26.0.0",
         "chai": "^5.2.0",
         "conditional-type-checks": "^1.0.6",
-        "@aibulat/indexeddb-impl": "^0.1.0",
+        "@aibulat/indexeddb-impl": "^0.1.2",
         "publint": "^0.3.23",
         "tsdown": "^0.22.14",
         "typescript": "^5.9.3"

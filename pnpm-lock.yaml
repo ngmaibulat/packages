@@ -215,7 +215,7 @@ importers:
   packages/indexeddb:
     devDependencies:
       '@aibulat/indexeddb-impl':
-        specifier: ^0.1.0
+        specifier: ^0.1.2
         version: link:../indexeddb-impl
       '@arethetypeswrong/core':
         specifier: ^0.18.5
