@@ -10,6 +10,7 @@ import { NexiePromise } from '../zone/nexie-promise.ts';
 import type { Table } from './table.ts';
 import type { Transaction } from './transaction.ts';
 import type { WhereClause } from './where-clause.ts';
+import type { DBCoreCursor, DBCoreIndexName } from '../types/dbcore.ts';
 import type { IndexableType } from '../types/schema.ts';
 
 const ModifyError = exceptions['Modify']!;
@@ -22,7 +23,7 @@ const ModifyError = exceptions['Modify']!;
  * walking every key between. Calling `stop()` ends the iteration.
  */
 export type CursorAlgorithm = (
-    cursor: IDBCursor,
+    cursor: DBCoreCursor,
     advance: (fn: () => void) => void,
     stop: () => void,
 ) => boolean;
@@ -138,16 +139,15 @@ export class Collection<T = any, TKey = IndexableType> {
         return this._ctx.table._trans('readwrite', fn, true);
     }
 
-    private _source(trans: Transaction): IDBObjectStore | IDBIndex {
-        const store = trans.idbtrans.objectStore(this._ctx.table.name);
+    /**
+     * The physical index this query reads, in DBCore's terms: `null` for the
+     * primary key. A virtual index resolves to the compound index that backs
+     * it, which is the one whose keys a mutation is compared against.
+     */
+    private _index(): DBCoreIndexName {
         return this._ctx.resolved.isPrimaryKey
-            ? store
-            : store.index(this._ctx.resolved.index!.name);
-    }
-
-    private _direction(): IDBCursorDirection {
-        return (this._ctx.dir +
-            (this._ctx.unique ? 'unique' : '')) as IDBCursorDirection;
+            ? null
+            : this._ctx.resolved.index!.name;
     }
 
     /** True when the query is a bare key range, so a getAll fast path applies. */
@@ -169,108 +169,93 @@ export class Collection<T = any, TKey = IndexableType> {
         trans: Transaction,
         keysOnly: boolean,
         state: IterationState,
-        emit: (cursor: IDBCursor) => boolean,
+        emit: (cursor: DBCoreCursor) => boolean,
     ): NexiePromise<void> {
-        return new NexiePromise<void>((resolve, reject) => {
-            const ctx = this._ctx;
-            if (state.stopped) {
-                resolve();
-                return;
-            }
+        const ctx = this._ctx;
+        if (state.stopped) return NexiePromise.resolve();
 
-            const algorithm = ctx.algorithmFactory
-                ? ctx.algorithmFactory(ctx.dir)
-                : null;
-            const filter = ctx.filter;
+        const algorithm = ctx.algorithmFactory
+            ? ctx.algorithmFactory(ctx.dir)
+            : null;
+        const filter = ctx.filter;
 
-            const source = this._source(trans);
-            const direction = this._direction();
+        return ctx.table.core
+            .openCursor({
+                trans,
+                index: this._index(),
+                range: ctx.range,
+                reverse: ctx.dir === 'prev',
+                unique: ctx.unique,
+                // A key cursor exposes no `value`, and user filters are written
+                // against the record. So a filtered `count()` or `keys()` still
+                // has to walk a value cursor -- the caller only asked not to be
+                // HANDED values, not for them to be unavailable to its own
+                // predicate. Algorithms are exempt: they read `cursor.key` only.
+                keysOnly: keysOnly && !filter,
+            })
+            .then((cursor) => {
+                // Held in an object rather than a local: the algorithm assigns
+                // these from inside a callback, and TypeScript's control-flow
+                // analysis would otherwise narrow the locals to their initial
+                // values at every use site.
+                const control = {
+                    advancer: null as (() => void) | null,
+                    finished: false,
+                };
 
-            // A key cursor exposes no `value`, and user filters are written
-            // against the record. So a filtered `count()` or `keys()` still has
-            // to walk a value cursor -- the caller only asked not to be HANDED
-            // values, not for them to be unavailable to its own predicate.
-            // Algorithms are exempt: they read `cursor.key` only.
-            const request =
-                keysOnly && !filter
-                    ? source.openKeyCursor(ctx.range, direction)
-                    : source.openCursor(ctx.range, direction);
+                const advance = (fn: () => void) => {
+                    control.advancer = fn;
+                };
+                const stop = () => {
+                    control.finished = true;
+                    state.stopped = true;
+                    // Must settle here. Operators hand `stop` to `advance()`
+                    // rather than calling it inline, so by the time it runs it
+                    // IS the cursor-movement step -- if it does not end the
+                    // walk, nothing else will and it simply stalls.
+                    cursor.stop();
+                };
 
-            // Held in an object rather than a local: the algorithm assigns
-            // these from inside a callback, and TypeScript's control-flow
-            // analysis would otherwise narrow the locals to their initial
-            // values at every use site.
-            const control = {
-                advancer: null as (() => void) | null,
-                finished: false,
-            };
+                return cursor.start(() => {
+                    if (state.stopped) {
+                        cursor.stop();
+                        return;
+                    }
 
-            const advance = (fn: () => void) => {
-                control.advancer = fn;
-            };
-            const stop = () => {
-                control.finished = true;
-                state.stopped = true;
-                // Must settle here. Operators hand `stop` to `advance()` rather
-                // than calling it inline, so by the time it runs it IS the
-                // cursor-movement step -- if it does not resolve, nothing else
-                // will and the walk simply stalls.
-                resolve();
-            };
+                    control.advancer = null;
+                    let include = true;
 
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                try {
-                    step();
-                } catch (error) {
-                    // A throwing user filter must reject the query. Left
-                    // uncaught it would escape the IDB event dispatch and the
-                    // promise would simply never settle, which reads as a hang.
-                    reject(error);
-                }
-            };
+                    if (algorithm) include = algorithm(cursor, advance, stop);
+                    if (include && filter) include = filter(cursor, advance, stop);
 
-            const step = () => {
-                const cursor = request.result;
-                if (!cursor || state.stopped) {
-                    resolve();
-                    return;
-                }
+                    if (control.finished) {
+                        // `until` includes its stop entry before ending, so
+                        // honour the algorithm's verdict before unwinding.
+                        if (include) emit(cursor);
+                        cursor.stop();
+                        return;
+                    }
 
-                control.advancer = null;
-                let include = true;
+                    // Read through an explicit annotation: the assignment to
+                    // null above narrows the property, and TypeScript does not
+                    // widen it again for the callback that may have reassigned it.
+                    const advancer = control.advancer as (() => void) | null;
 
-                if (algorithm) include = algorithm(cursor, advance, stop);
-                if (include && filter) include = filter(cursor, advance, stop);
+                    if (!include) {
+                        if (advancer) advancer();
+                        else cursor.continue();
+                        return;
+                    }
 
-                if (control.finished) {
-                    // `until` includes its stop entry before ending, so honour
-                    // the algorithm's verdict before unwinding.
-                    if (include) emit(cursor);
-                    resolve();
-                    return;
-                }
+                    if (!emit(cursor)) {
+                        cursor.stop();
+                        return;
+                    }
 
-                // Read through an explicit annotation: the assignment to null
-                // above narrows the property, and TypeScript does not widen it
-                // again for the callback that may have reassigned it.
-                const advancer = control.advancer as (() => void) | null;
-
-                if (!include) {
                     if (advancer) advancer();
                     else cursor.continue();
-                    return;
-                }
-
-                if (!emit(cursor)) {
-                    resolve();
-                    return;
-                }
-
-                if (advancer) advancer();
-                else cursor.continue();
-            };
-        });
+                });
+            });
     }
 
     /**
@@ -281,7 +266,7 @@ export class Collection<T = any, TKey = IndexableType> {
     private _iterate(
         trans: Transaction,
         keysOnly: boolean,
-        onItem: (cursor: IDBCursor) => void,
+        onItem: (cursor: DBCoreCursor) => void,
     ): NexiePromise<void> {
         const ctx = this._ctx;
         if (ctx.error) return NexiePromise.reject(ctx.error);
@@ -295,7 +280,7 @@ export class Collection<T = any, TKey = IndexableType> {
 
         if (state.limitLeft <= 0) return NexiePromise.resolve();
 
-        const emit = (cursor: IDBCursor): boolean => {
+        const emit = (cursor: DBCoreCursor): boolean => {
             if (state.seen) {
                 const id = keyToString(cursor.primaryKey);
                 if (state.seen.has(id)) return true;
@@ -349,26 +334,27 @@ export class Collection<T = any, TKey = IndexableType> {
             // when nothing has to inspect records as they go by, and only
             // forwards -- getAll has no direction argument.
             if (this._isPlain() && ctx.dir === 'next' && ctx.offset === 0) {
-                const count =
-                    ctx.limit === Infinity ? undefined : ctx.limit;
-                return NexiePromise.resolve(
-                    new NexiePromise<T[]>((resolve, reject) => {
-                        const request = this._source(trans).getAll(
-                            ctx.range ?? undefined,
-                            count,
-                        );
-                        request.onsuccess = () => resolve(request.result as T[]);
-                        request.onerror = () => reject(request.error);
-                    }),
-                ).then((values) =>
-                    ctx.valueMapper ? values.map((v) => this._mapValue(v)) : values,
-                );
+                return ctx.table.core
+                    .query({
+                        trans,
+                        index: this._index(),
+                        range: ctx.range,
+                        limit: ctx.limit,
+                        values: true,
+                    })
+                    .then(({ result }) =>
+                        ctx.valueMapper
+                            ? (result as T[]).map((value) =>
+                                  this._mapValue(value),
+                              )
+                            : (result as T[]),
+                    );
             }
 
             const values: T[] = [];
             return this._iterate(trans, false, (cursor) => {
                 values.push(
-                    this._mapValue((cursor as IDBCursorWithValue).value),
+                    this._mapValue(cursor.value),
                 );
             }).then(() => values);
         });
@@ -385,10 +371,10 @@ export class Collection<T = any, TKey = IndexableType> {
                 ctx.limit === Infinity &&
                 !ctx.unique
             ) {
-                return new NexiePromise<number>((resolve, reject) => {
-                    const request = this._source(trans).count(ctx.range ?? undefined);
-                    request.onsuccess = () => resolve(request.result);
-                    request.onerror = () => reject(request.error);
+                return ctx.table.core.count({
+                    trans,
+                    index: this._index(),
+                    range: ctx.range,
                 });
             }
 
@@ -406,16 +392,15 @@ export class Collection<T = any, TKey = IndexableType> {
         return this._read((trans) => {
             const ctx = this._ctx;
             if (this._isPlain() && ctx.dir === 'next' && ctx.offset === 0) {
-                const count = ctx.limit === Infinity ? undefined : ctx.limit;
-                return new NexiePromise<TKey[]>((resolve, reject) => {
-                    const request = this._source(trans).getAllKeys(
-                        ctx.range ?? undefined,
-                        count,
-                    );
-                    request.onsuccess = () =>
-                        resolve(request.result as TKey[]);
-                    request.onerror = () => reject(request.error);
-                });
+                return ctx.table.core
+                    .query({
+                        trans,
+                        index: this._index(),
+                        range: ctx.range,
+                        limit: ctx.limit,
+                        values: false,
+                    })
+                    .then(({ result }) => result as TKey[]);
             }
 
             const keys: TKey[] = [];
@@ -468,7 +453,7 @@ export class Collection<T = any, TKey = IndexableType> {
     ): NexiePromise<void> {
         return this._read((trans) =>
             this._iterate(trans, false, (cursor) => {
-                callback(this._mapValue((cursor as IDBCursorWithValue).value), {
+                callback(this._mapValue(cursor.value), {
                     key: toLogicalKey(
                         this._ctx.resolved,
                         cursor.key as IndexableType,
@@ -559,7 +544,7 @@ export class Collection<T = any, TKey = IndexableType> {
         const clone = this.clone();
         clone._addFilter((cursor) =>
             predicate(
-                clone._mapValue((cursor as IDBCursorWithValue).value) as T,
+                clone._mapValue(cursor.value) as T,
             ),
         );
         return clone;
@@ -575,7 +560,7 @@ export class Collection<T = any, TKey = IndexableType> {
     ): Collection<T, TKey> {
         const clone = this.clone();
         clone._addFilter((cursor, advance, stop) => {
-            if (predicate((cursor as IDBCursorWithValue).value as T)) {
+            if (predicate(cursor.value as T)) {
                 // Stop after this record, including it only if asked.
                 advance(stop);
                 return includeStopEntry;
@@ -645,7 +630,7 @@ export class Collection<T = any, TKey = IndexableType> {
             return this._iterate(trans, false, (cursor) => {
                 const primaryKey = cursor.primaryKey as IndexableType;
                 const wrapper: { value: T | null } = {
-                    value: (cursor as IDBCursorWithValue).value,
+                    value: cursor.value,
                 };
 
                 try {
@@ -742,20 +727,18 @@ export class Collection<T = any, TKey = IndexableType> {
             ctx.limit === Infinity
         ) {
             return this._write((trans) => {
-                const store = trans.idbtrans.objectStore(ctx.table.name);
-                return new NexiePromise<number>((resolve, reject) => {
-                    const countRequest = store.count(ctx.range ?? undefined);
-                    countRequest.onerror = () => reject(countRequest.error);
-                    countRequest.onsuccess = () => {
-                        const total = countRequest.result;
-                        const deleteRequest = ctx.range
-                            ? store.delete(ctx.range)
-                            : store.clear();
-                        deleteRequest.onsuccess = () => resolve(total);
-                        deleteRequest.onerror = () =>
-                            reject(deleteRequest.error);
-                    };
-                });
+                const core = ctx.table.core;
+                return core
+                    .count({ trans, index: null, range: ctx.range })
+                    .then((total) =>
+                        core
+                            .mutate({
+                                type: 'deleteRange',
+                                trans,
+                                range: ctx.range,
+                            })
+                            .then(() => total),
+                    );
             });
         }
 

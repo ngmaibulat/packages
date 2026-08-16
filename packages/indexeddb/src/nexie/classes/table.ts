@@ -1,4 +1,3 @@
-import { bridge } from '../dbcore/request.ts';
 import { exceptions } from '../errors/errors.ts';
 import { getByKeyPath, isArray, isPlainObject, setByKeyPath } from '../functions/utils.ts';
 import {
@@ -102,10 +101,6 @@ export class Table<T = any, TKey = IndexableType> {
         return constructor;
     }
 
-    private _store(trans: Transaction): IDBObjectStore {
-        return trans.idbtrans.objectStore(this.name);
-    }
-
     /** Apply the read hook, if one is installed. */
     private _mapRead(value: any): any {
         const readHook = this.schema.readHook;
@@ -127,44 +122,42 @@ export class Table<T = any, TKey = IndexableType> {
             );
         }
         return this._trans('readonly', (trans) =>
-            bridge<T | undefined>(
-                this._store(trans).get(key as IDBValidKey) as IDBRequest<
-                    T | undefined
-                >,
-            ).then((value) => this._mapRead(value) as T | undefined),
+            this.core
+                .get({ trans, key: key as IndexableType })
+                .then((value) => this._mapRead(value) as T | undefined),
         );
     }
 
     count(): NexiePromise<number> {
         return this._trans('readonly', (trans) =>
-            bridge(this._store(trans).count()),
+            this.core.count({ trans, index: null, range: null }),
         );
     }
 
     toArray(): NexiePromise<T[]> {
         return this._trans('readonly', (trans) =>
-            bridge<T[]>(this._store(trans).getAll() as IDBRequest<T[]>).then(
-                (values) =>
+            this.core
+                .query({ trans, index: null, range: null, values: true })
+                .then(({ result }) =>
                     this.schema.readHook
-                        ? values.map((value) => this._mapRead(value) as T)
-                        : values,
-            ),
+                        ? (result as T[]).map(
+                              (value) => this._mapRead(value) as T,
+                          )
+                        : (result as T[]),
+                ),
         );
     }
 
     bulkGet(keys: TKey[]): NexiePromise<(T | undefined)[]> {
-        return this._trans('readonly', (trans) => {
-            const store = this._store(trans);
-            return NexiePromise.all(
-                keys.map((key) =>
-                    bridge<T | undefined>(
-                        store.get(key as IDBValidKey) as IDBRequest<
-                            T | undefined
-                        >,
-                    ).then((value) => this._mapRead(value) as T | undefined),
+        return this._trans('readonly', (trans) =>
+            this.core
+                .getMany({ trans, keys: keys as IndexableType[] })
+                .then((values) =>
+                    values.map(
+                        (value) => this._mapRead(value) as T | undefined,
+                    ),
                 ),
-            );
-        });
+        );
     }
 
     // -------------------------------------------------------------- writing
@@ -484,25 +477,45 @@ export class Table<T = any, TKey = IndexableType> {
         const key = this._keyOf(keyOrObject);
         if (key instanceof NexiePromise) return key as never;
 
+        const outbound = this.schema.primKey.keyPath === null;
+
         return this._trans(
             'readwrite',
-            (trans) => {
-                const store = this._store(trans);
-                return bridge<T | undefined>(
-                    store.get(key as IDBValidKey) as IDBRequest<T | undefined>,
-                ).then((existing) => {
-                    const target = (existing ?? {}) as Record<string, unknown>;
-                    applyUpdateSpec(target, changes as Record<string, unknown>);
-                    if (!existing && this.schema.primKey.keyPath !== null) {
-                        setByKeyPath(target, this.schema.primKey.keyPath, key);
-                    }
-                    const request =
-                        this.schema.primKey.keyPath === null
-                            ? store.put(target, key as IDBValidKey)
-                            : store.put(target);
-                    return bridge(request).then(() => existing !== undefined);
-                });
-            },
+            (trans) =>
+                this.core
+                    .get({ trans, key: key as IndexableType })
+                    .then((existing) => {
+                        const target = (existing ?? {}) as Record<
+                            string,
+                            unknown
+                        >;
+                        applyUpdateSpec(
+                            target,
+                            changes as Record<string, unknown>,
+                        );
+                        if (!existing && !outbound) {
+                            setByKeyPath(
+                                target,
+                                this.schema.primKey.keyPath!,
+                                key,
+                            );
+                        }
+                        return this.core
+                            .mutate({
+                                type: 'put',
+                                trans,
+                                values: [target],
+                                ...(outbound
+                                    ? { keys: [key as IndexableType] }
+                                    : {}),
+                            })
+                            .then((response) => {
+                                if (response.numFailures > 0) {
+                                    throw response.failures[0];
+                                }
+                                return existing !== undefined;
+                            });
+                    }),
             true,
         );
     }
@@ -517,18 +530,21 @@ export class Table<T = any, TKey = IndexableType> {
 
         return this._trans(
             'readwrite',
-            (trans) => {
-                const store = this._store(trans);
-                let updated = 0;
+            (trans) =>
+                this.core
+                    .getMany({
+                        trans,
+                        keys: keysAndChanges.map(
+                            ({ key }) => key as IndexableType,
+                        ),
+                    })
+                    .then((existingValues) => {
+                        const values: unknown[] = [];
+                        const keys: IndexableType[] = [];
 
-                return NexiePromise.all(
-                    keysAndChanges.map(({ key, changes }) =>
-                        bridge<T | undefined>(
-                            store.get(key as IDBValidKey) as IDBRequest<
-                                T | undefined
-                            >,
-                        ).then((existing) => {
-                            if (existing === undefined) return undefined;
+                        keysAndChanges.forEach(({ key, changes }, index) => {
+                            const existing = existingValues[index];
+                            if (existing === undefined) return;
 
                             // Moving a record's primary key is a delete plus an
                             // insert, not an update; refuse rather than silently
@@ -553,20 +569,24 @@ export class Table<T = any, TKey = IndexableType> {
                                 existing as Record<string, unknown>,
                                 changes as Record<string, unknown>,
                             );
+                            values.push(existing);
+                            keys.push(key as IndexableType);
+                        });
 
-                            const request =
-                                primKeyPath === null
-                                    ? store.put(existing, key as IDBValidKey)
-                                    : store.put(existing);
+                        if (values.length === 0) return 0;
 
-                            return bridge(request).then(() => {
-                                updated++;
-                                return undefined;
-                            });
-                        }),
-                    ),
-                ).then(() => updated);
-            },
+                        return this.core
+                            .mutate({
+                                type: 'put',
+                                trans,
+                                values,
+                                ...(primKeyPath === null ? { keys } : {}),
+                            })
+                            .then(
+                                (response) =>
+                                    values.length - response.numFailures,
+                            );
+                    }),
             true,
         );
     }

@@ -22,6 +22,7 @@ IndexedDB with usability. A tiny (~1.9 kB brotli'd, zero runtime dependencies) l
    1. [Closing with `using`](#closing-with-using)
 1. [Examples](#examples)
 1. [TypeScript](#typescript)
+1. [Nexie — the high-level API](#nexie--the-high-level-api)
 
 # Installation
 
@@ -560,6 +561,115 @@ You can also cast to a typeless database by omitting the type, eg `db as IDBPDat
 
 Note: Types like `IDBPDatabase` are used by TypeScript only. The implementation uses proxies under the hood.
 
+# Nexie — the high-level API
+
+Everything above is the *low-level* API: you still think in object stores, transactions and cursors. The same package also ships a high-level one at a separate subpath, **Nexie** — a re-implementation of the Dexie 4 API.
+
+```sh
+npm install @aibulat/indexeddb   # same package, no extra dependency
+```
+
+```ts
+import Nexie from '@aibulat/indexeddb/nexie';
+
+const db = new Nexie('MyDB');
+db.version(1).stores({ friends: '++id, name, age' });
+
+await db.friends.add({ name: 'Alice', age: 30 });
+const grownups = await db.friends.where('age').above(25).toArray();
+```
+
+The two entries are **disjoint**: nothing under `nexie` imports the low-level entry, so `dist/index.js` is unchanged by its existence and importing one never pulls in the other. `dist/nexie.js` is around 124 kB unminified; the ~1.9 kB figure at the top of this file is the `.` entry and stays true.
+
+## Coming from Dexie
+
+Migration is a rename and nothing else:
+
+```diff
+- import Dexie from 'dexie';
++ import Nexie from '@aibulat/indexeddb/nexie';
+
+- const db = new Dexie('MyDB');
++ const db = new Nexie('MyDB');
+
+  db.version(1).stores({ friends: '++id,name,age' });
+  await db.friends.where('age').above(25).toArray();
+```
+
+Dexie-branded *identifiers* are renamed — `NexieError`, `Nexie.Promise`, `Nexie.addons`, `Nexie.errnames`, `Nexie.currentTransaction`. API-visible *strings* are not, because code matches on them: error `name` values stay `'ConstraintError'` and friends, so `.catch('ConstraintError', handler)` still works, as do the schema DSL, the `'rw!'` / `'r?'` mode strings and the `':id'` magic index.
+
+This is a clean-room implementation, not a port: Dexie is Apache-2.0, this package is MIT, and no Dexie code was copied.
+
+## Transactions
+
+```ts
+await db.transaction('rw', db.friends, async () => {
+    await db.friends.add({ name: 'Alice', age: 30 });
+    await db.friends.where('name').equals('Bob').delete();
+});
+```
+
+Table calls inside the scope join the transaction automatically, across `await` — there is nothing to thread through. That works by tracking the transaction in a zone that survives suspension, so **every promise you await inside a scope must be one of ours**. Awaiting a native promise (a `fetch`, a foreign library) loses the transaction, and the operation after it would otherwise open a second one silently. Use the escape hatch:
+
+```ts
+const data = await Nexie.waitFor(fetch('/api/friends').then((r) => r.json()));
+```
+
+`Nexie.currentTransaction` is the transaction the calling code is inside, or `null`.
+
+## `liveQuery`
+
+A query that re-runs itself when its own result could have changed:
+
+```ts
+import { liveQuery } from '@aibulat/indexeddb/nexie';
+
+const subscription = liveQuery(() =>
+    db.friends.where('age').above(25).toArray(),
+).subscribe((friends) => render(friends));
+
+// later
+subscription.unsubscribe();
+```
+
+The querier runs in a zone that records every read it makes, down to the key ranges. Each committed transaction publishes what it wrote, and the query re-runs only where the two intersect — so a `liveQuery` over `db.friends.get(7)` ignores writes to every other friend. Writes made through a second connection, or in another tab (via `BroadcastChannel`, feature-detected), come through the same path.
+
+Two things to know:
+
+- The same zone rule applies: **await only Nexie promises inside a querier**, or the reads after that point go unrecorded and the query stops re-running for them.
+- Invalidation is exact on primary keys, and exact on secondary indexes for `add`. For `put`, `delete` and range deletes it widens to the whole index, because knowing which index entries those *remove* means reading the old record first. The approximation is deliberate and one-directional: it re-runs a query that need not have re-run, never the reverse.
+
+## Extending it
+
+`db.use()` installs a middleware over DBCore — the layer every read and every write passes through. The library's own CRUD hooks and observability are built on it rather than beside it:
+
+```ts
+db.use({
+    stack: 'dbcore',
+    name: 'logger',
+    create: (down) => ({
+        table: (name) => {
+            const table = down.table(name);
+            return {
+                ...table,
+                mutate: (req) => {
+                    console.log(name, req.type);
+                    return table.mutate(req);
+                },
+            };
+        },
+    }),
+});
+```
+
+CRUD hooks (`db.friends.hook('creating' | 'reading' | 'updating' | 'deleting', …)`), database events (`db.on('populate' | 'ready' | 'blocked' | 'versionchange' | 'close')`), per-version `upgrade()`, `mapToClass`, `Entity` and `Nexie.addons` are all present.
+
+## Not implemented yet
+
+Nexie is being built in phases and this is the honest list of what is still missing, so nothing has to be discovered by its absence:
+
+`Nexie.vip`, `Nexie.ignoreTransaction`, `ForeignAwaitError` (a foreign `await` currently surfaces as `PrematureCommitError`), `Nexie.getDatabaseNames`, `Nexie.exists`, `maxConnections`, `chromeTransactionDurability`, `allowEmptyDB`, `modifyChunkSize` chunking, `Nexie.debug`, `Nexie.semVer`, `dynamicallyOpened`, bfcache support, and the query result cache (`cache: 'immutable' | 'cloned'`). The `Dexie.Table<T, K>` namespace shim is deliberately dropped — import the types instead: `import type { Table } from '@aibulat/indexeddb/nexie'`.
+
 # Developing
 
 This package lives in the [`@aibulat/packages`](https://github.com/ngmaibulat/packages) workspace. From the package directory:
@@ -569,9 +679,12 @@ pnpm run build       # tsdown -> dist/, plus publint and attw
 pnpm run dev         # tsdown --watch
 pnpm run typecheck   # both the src and test projects
 pnpm run test        # node:test against @aibulat/indexeddb-impl
+pnpm run test:bun    # the same suite under Bun, and the totals must match
 ```
 
-The suite is 117 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Roughly half the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
+The suite is 388 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Some of the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
+
+It must report **identical totals under Node and Bun**. That is not ceremony: Nexie's transaction zone rests on the normative ordering of `Await` and promise-resolve-thenable jobs, and Bun is JSC where Node is V8. A divergence there is a bug in the design rather than a runtime quirk, which is why there are no per-runtime expectations to absorb one.
 
 Run a single file or a single test:
 

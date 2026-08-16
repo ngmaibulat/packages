@@ -16,6 +16,7 @@ import { makeClassConstructor } from '../functions/make-class-constructor.ts';
 import { createIdbCore } from '../dbcore/dbcore-idb.ts';
 import { buildMiddlewareStack } from '../dbcore/middleware-stack.ts';
 import { createHooksMiddleware } from '../hooks/hooks-middleware.ts';
+import { createObservabilityMiddleware } from '../live-query/observability-middleware.ts';
 import type { DBCore, Middleware } from '../types/dbcore.ts';
 import type { DbSchema, IndexSpec, TableSchema } from '../types/schema.ts';
 import type { TransactionMode } from '../types/transaction.ts';
@@ -133,9 +134,10 @@ export class Nexie {
             },
         });
 
-        // Hooks are themselves a middleware, so the extension mechanism is the
-        // one the library's own features are built on.
+        // Hooks and observability are themselves middlewares, so the extension
+        // mechanism is the one the library's own features are built on.
         this._middlewares.push(createHooksMiddleware());
+        this._middlewares.push(createObservabilityMiddleware());
 
         for (const addon of options?.addons ?? Nexie.addons) addon(this);
     }
@@ -152,7 +154,7 @@ export class Nexie {
     get core(): DBCore {
         if (!this._coreCache) {
             this._coreCache = buildMiddlewareStack(
-                createIdbCore(this._dbSchema),
+                createIdbCore(this.name, this._dbSchema),
                 this._middlewares,
             );
         }

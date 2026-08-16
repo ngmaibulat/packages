@@ -129,6 +129,12 @@ jobs:
         # readonly Blob accessor, a UMD header that resolves differently, and a
         # side-effect import that cannot re-run in a shared process).
         #
+        # @aibulat/indexeddb declares `engines.bun` for the same reason, and
+        # Nexie's transaction zone is the part that earns the second runtime:
+        # it rests on the normative ordering of `Await` and thenable jobs, and
+        # Bun is JSC where Node is V8. A divergence there is a real bug in the
+        # design, not a Bun quirk.
+        #
         # The pass/skip/fail totals must match the Node job exactly. A divergence
         # is the finding, which is why there are no per-runtime manifest
         # overrides to absorb one.
@@ -157,3 +163,5 @@ jobs:
             - run: pnpm run build
 
             - run: pnpm --filter @aibulat/indexeddb-impl run test:bun
+
+            - run: pnpm --filter @aibulat/indexeddb run test:bun

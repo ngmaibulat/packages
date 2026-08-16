@@ -68,6 +68,17 @@ export class Transaction {
 
     private _memoizedTables = new Map<string, Table>();
 
+    /**
+     * What this transaction has written, accumulated by the observability
+     * middleware and published on commit -- never before, so an aborted
+     * transaction notifies nobody. Lives on the root transaction, since that is
+     * the one whose commit is real.
+     *
+     * Typed structurally to keep the live-query graph out of this module; it is
+     * always an ObservabilitySet.
+     */
+    _mutatedParts: Record<string, unknown> | undefined;
+
     /** Set while `waitFor` is holding the transaction open. */
     _waitingFor: NexiePromise<unknown> | undefined;
     private _waitingQueue: (() => void)[] | undefined;

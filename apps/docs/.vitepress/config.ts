@@ -124,7 +124,10 @@ export default defineConfig({
             "/indexeddb/": [
                 {
                     text: "@aibulat/indexeddb",
-                    items: [{ text: "Overview", link: "/indexeddb/" }],
+                    items: [
+                        { text: "Overview", link: "/indexeddb/" },
+                        { text: "Nexie", link: "/indexeddb/nexie" },
+                    ],
                 },
             ],
             "/indexeddb-impl/": [

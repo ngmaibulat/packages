@@ -31,6 +31,13 @@ export { Entity } from './nexie/classes/entity.ts';
 
 export { cmp } from './nexie/functions/cmp.ts';
 export {
+    RangeSet,
+    mergeRanges,
+    rangesOverlap,
+} from './nexie/functions/rangeset.ts';
+export { liveQuery } from './nexie/live-query/live-query.ts';
+export { globalEvents } from './nexie/globals/global-events.ts';
+export {
     PropModification,
     add,
     remove,
@@ -57,10 +64,25 @@ export type { NexieEvent, NexieEventSet } from './nexie/functions/events.ts';
 export type {
     DBCore,
     DBCoreTable,
+    DBCoreCursor,
+    DBCoreIndexName,
     DBCoreMutateRequest,
     DBCoreMutateResponse,
+    DBCoreOpenCursorRequest,
+    DBCoreQueryRequest,
+    DBCoreQueryResponse,
     Middleware,
 } from './nexie/types/dbcore.ts';
+export type { KeyRange } from './nexie/functions/rangeset.ts';
+export type {
+    Observable,
+    Observer,
+    Subscription,
+} from './nexie/live-query/live-query.ts';
+export type {
+    ObservabilitySet,
+    SerializedObsSet,
+} from './nexie/live-query/obs-set.ts';
 export type { UpdateSpec } from './nexie/functions/prop-modification.ts';
 export type {
     CollectionContext,

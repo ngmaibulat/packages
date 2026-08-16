@@ -2,23 +2,29 @@ import { NexiePromise } from '../zone/nexie-promise.ts';
 import { bridge, bridgeNonAborting } from './request.ts';
 import type {
     DBCore,
+    DBCoreCursor,
+    DBCoreIndexName,
     DBCoreMutateRequest,
     DBCoreMutateResponse,
+    DBCoreOpenCursorRequest,
     DBCoreTable,
 } from '../types/dbcore.ts';
+import type { Transaction } from '../classes/transaction.ts';
 import type { DbSchema, IndexableType } from '../types/schema.ts';
 
 /**
  * The bottom of the middleware stack: DBCore implemented directly on
  * IndexedDB.
  *
- * Every write in the library funnels through `mutate`, which is what makes a
- * single hooks middleware sufficient to observe them all.
+ * Every read and every write in the library funnels through here, which is what
+ * makes one hooks middleware sufficient to observe all the writes and one
+ * observability middleware sufficient to observe all the reads.
  */
-export function createIdbCore(schema: DbSchema): DBCore {
+export function createIdbCore(name: string, schema: DbSchema): DBCore {
     const tables = new Map<string, DBCoreTable>();
 
     const core: DBCore = {
+        name,
         schema,
         table(name: string): DBCoreTable {
             const cached = tables.get(name);
@@ -27,6 +33,17 @@ export function createIdbCore(schema: DbSchema): DBCore {
             const tableSchema = schema[name]!;
             const store = (request: DBCoreMutateRequest['trans']) =>
                 request.idbtrans.objectStore(name);
+
+            /** The store itself for the primary key, or the named index. */
+            const source = (
+                trans: Transaction,
+                index: DBCoreIndexName | undefined,
+            ): IDBObjectStore | IDBIndex => {
+                const objectStore = trans.idbtrans.objectStore(name);
+                return index === null || index === undefined
+                    ? objectStore
+                    : objectStore.index(index);
+            };
 
             const table: DBCoreTable = {
                 name,
@@ -100,8 +117,33 @@ export function createIdbCore(schema: DbSchema): DBCore {
 
                 count(request) {
                     return bridge(
-                        store(request.trans).count(request.range ?? undefined),
+                        source(request.trans, request.index).count(
+                            request.range ?? undefined,
+                        ),
                     );
+                },
+
+                query(request) {
+                    const from = source(request.trans, request.index);
+                    const range = request.range ?? undefined;
+                    // IndexedDB reads a count of 0 as "no limit", so an
+                    // explicit 0 must never reach it. Callers short-circuit
+                    // that case; this guards the contract anyway.
+                    const limit =
+                        request.limit === undefined ||
+                        request.limit === Infinity
+                            ? undefined
+                            : request.limit;
+
+                    return bridge<any[]>(
+                        (request.values
+                            ? from.getAll(range, limit)
+                            : from.getAllKeys(range, limit)) as IDBRequest<any[]>,
+                    ).then((result) => ({ result }));
+                },
+
+                openCursor(request) {
+                    return NexiePromise.resolve(makeCursor(source, request));
                 },
             };
 
@@ -111,6 +153,94 @@ export function createIdbCore(schema: DbSchema): DBCore {
     };
 
     return core;
+}
+
+/**
+ * A {@link DBCoreCursor} over a real `IDBCursor`.
+ *
+ * No request is issued until `start`, which is what lets a middleware inspect
+ * (or replace) the request between `openCursor` and the first record.
+ */
+function makeCursor(
+    source: (
+        trans: Transaction,
+        index: DBCoreIndexName | undefined,
+    ) => IDBObjectStore | IDBIndex,
+    request: DBCoreOpenCursorRequest,
+): DBCoreCursor {
+    let idbRequest: IDBRequest<IDBCursor | null> | null = null;
+    let resolveWalk: (() => void) | null = null;
+    let rejectWalk: ((error: unknown) => void) | null = null;
+    let finished = false;
+
+    const currentCursor = (): IDBCursor => idbRequest!.result!;
+
+    const cursor: DBCoreCursor = {
+        get key(): IndexableType {
+            return currentCursor().key as IndexableType;
+        },
+        get primaryKey(): IndexableType {
+            return currentCursor().primaryKey as IndexableType;
+        },
+        get value(): any {
+            return (idbRequest?.result as IDBCursorWithValue | null | undefined)
+                ?.value;
+        },
+
+        continue(key?: IndexableType): void {
+            if (key === undefined) currentCursor().continue();
+            else currentCursor().continue(key as IDBValidKey);
+        },
+
+        start(onNext: () => void): NexiePromise<void> {
+            return new NexiePromise<void>((resolve, reject) => {
+                resolveWalk = resolve;
+                rejectWalk = reject;
+
+                const direction = ((request.reverse ? 'prev' : 'next') +
+                    (request.unique ? 'unique' : '')) as IDBCursorDirection;
+                const from = source(request.trans, request.index);
+                const range = request.range ?? undefined;
+
+                idbRequest = (
+                    request.keysOnly
+                        ? from.openKeyCursor(range, direction)
+                        : from.openCursor(range, direction)
+                ) as IDBRequest<IDBCursor | null>;
+
+                idbRequest.onerror = () => cursor.fail(idbRequest!.error);
+                idbRequest.onsuccess = () => {
+                    if (finished) return;
+                    if (!idbRequest!.result) {
+                        cursor.stop();
+                        return;
+                    }
+                    try {
+                        onNext();
+                    } catch (error) {
+                        // A throwing callback must reject the walk. Left
+                        // uncaught it would escape the IDB event dispatch and
+                        // the promise would never settle, which reads as a hang.
+                        cursor.fail(error);
+                    }
+                };
+            });
+        },
+
+        stop(): void {
+            if (finished) return;
+            finished = true;
+            resolveWalk?.();
+        },
+
+        fail(error: unknown): void {
+            if (finished) return;
+            finished = true;
+            rejectWalk?.(error);
+        },
+    };
+
+    return cursor;
 }
 
 function emptyResponse(): DBCoreMutateResponse {

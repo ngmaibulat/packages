@@ -13,9 +13,9 @@ A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*
 - `packages/funtest` → `@aibulat/funtest`, live smoke tests for public REST APIs, published as runnable reference code (`bin`: `funtest` → `bin/run.sh`).
 - `packages/isfile` → `@aibulat/isfile`, a one-function file-existence check. The leaf of the internal dependency graph.
 - `packages/json` → `@aibulat/json`, `readJson<T>()` over `isfile`.
-- `packages/indexeddb` → `@aibulat/indexeddb`, a promise wrapper over IndexedDB. **Its tests run against the sibling `@aibulat/indexeddb-impl`, which must be built first** — the exports map resolves into that package's gitignored `dist/`, so on a fresh checkout `pnpm --filter @aibulat/indexeddb run test` fails until a build has run. That is the same `linkWorkspacePackages` trap as **Build order** below, extended from `typecheck` to `test`; CI and `release.ts` already build first, so only local runs are affected. Forked from [`idb`](https://github.com/jakearchibald/idb) at v8.0.3 and maintained as an **API-compatible superset** — everything idb does behaves identically, plus fixes and additions upstream never shipped (see its CHANGELOG for the list and the upstream issue numbers). A browser library with no `bin`; like `restclients` it builds `platform: "neutral"` and must stay browser-safe. **The only package whose tests need an IndexedDB implementation** — they run on `fake-indexeddb` under `node:test`, not in a browser. Its tsconfig `lib` includes `ESNext.Disposable` for `Symbol.dispose`; consumers do **not** need it, because `entry.ts` keys that member off a type that collapses to `never` when the lib is absent. Do not "simplify" that to a plain `[Symbol.dispose]()` — it would break consumers on a narrower `lib`, which is upstream's `WeakKey` bug (#331).
+- `packages/indexeddb` → `@aibulat/indexeddb`, a promise wrapper over IndexedDB. **Its tests run against the sibling `@aibulat/indexeddb-impl`, which must be built first** — the exports map resolves into that package's gitignored `dist/`, so on a fresh checkout `pnpm --filter @aibulat/indexeddb run test` fails until a build has run. That is the same `linkWorkspacePackages` trap as **Build order** below, extended from `typecheck` to `test`; CI and `release.ts` already build first, so only local runs are affected. Forked from [`idb`](https://github.com/jakearchibald/idb) at v8.0.3 and maintained as an **API-compatible superset** — everything idb does behaves identically, plus fixes and additions upstream never shipped (see its CHANGELOG for the list and the upstream issue numbers). A browser library with no `bin`; like `restclients` it builds `platform: "neutral"` and must stay browser-safe. **The only package whose tests need an IndexedDB implementation** — they run on `fake-indexeddb` under `node:test`, not in a browser. Its tsconfig `lib` includes `ESNext.Disposable` for `Symbol.dispose`; consumers do **not** need it, because `entry.ts` keys that member off a type that collapses to `never` when the lib is absent. Do not "simplify" that to a plain `[Symbol.dispose]()` — it would break consumers on a narrower `lib`, which is upstream's `WeakKey` bug (#331). **It has a second entry, `./nexie`** — see **Nexie** below.
 - `packages/fs` → `@aibulat/fs`, filesystem helpers plus an `fs` bin. The only package with a native compile (`posix`) and a WASM dep (`@npcz/magic`).
-- `packages/indexeddb-impl` → `@aibulat/indexeddb-impl`, a pure-JS in-memory implementation of IndexedDB. Forked from [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB) at v6.2.5 (no history grafted), API unchanged apart from an added `installGlobals()`. **Apache-2.0, not MIT** — it is the one package with a `NOTICE`, which the licence requires; keep both in the published `files`. Like `restclients` and `indexeddb` it builds `platform: "neutral"` and must stay browser-safe. Its four test suites (WPT conformance, the QUnit corpus, unit, smoke — 1,748 tests) all run headless, and **the same suites must pass under both `node --test` and `bun test`** with identical totals; `test:bun` is what proves the second half. See **The two runtimes** below.
+- `packages/indexeddb-impl` → `@aibulat/indexeddb-impl`, a pure-JS in-memory implementation of IndexedDB. Forked from [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB) at v6.2.5 (no history grafted), API unchanged apart from an added `installGlobals()`. **Apache-2.0, not MIT** — it is the one package with a `NOTICE`, which the licence requires; keep both in the published `files`. Like `restclients` and `indexeddb` it builds `platform: "neutral"` and must stay browser-safe. Its four test suites (WPT conformance, the QUnit corpus, unit, smoke — 1,774 tests) all run headless, and **the same suites must pass under both `node --test` and `bun test`** with identical totals; `test:bun` is what proves the second half. See **The two runtimes** below.
 - `packages/mark` → `@aibulat/mark`, a terminal Markdown renderer (`bin`: `mark`).
 - `packages/mk-swagger-ui` → **`mk-swagger-ui`**, a static OpenAPI reference generator, rendering with **Scalar** despite the name (`bin`: `mk-swagger-ui`). One of the two members published without the `@aibulat` scope — see **The unscoped members** below.
 - `packages/sendeml` → `@aibulat/sendeml`, sends raw `.eml` files to SMTP, including Haraka queue dirs (`bin`: `sendeml`). Mid-restructure — see below.
@@ -258,15 +258,67 @@ Consequences of that, all of which differ from every other package here:
 
 Tests here are **vitest**, not `node:test` — the only member that is. All three suites are pure-function or CSS-source-text assertions and render no components, so root `pnpm run test` stays hermetic. `vite.config.ts` exists only to configure vitest; it builds nothing. It sets `css: true` because vitest otherwise stubs CSS modules to an empty string, which would also empty the `?raw` imports `themeTokens.test.ts` reads the stylesheets through.
 
-## The two runtimes: `@aibulat/indexeddb-impl`
+## Nexie: the second entry in `@aibulat/indexeddb`
 
-Every other package targets Node. This one must also pass under **Bun**, and
-that is not a formality — four real defects surfaced only there, all of them
-latent bugs rather than Bun quirks. Keep `pnpm --filter @aibulat/indexeddb-impl run test:bun`
-green alongside `test`; the two report identical totals, and a divergence is the
-signal.
+`packages/indexeddb` builds **two roots**, `src/index.ts` and `src/nexie.ts`, and
+publishes the second as the `./nexie` subpath. Nexie is a **clean-room
+re-implementation of the Dexie 4 API** — Dexie is Apache-2.0, this package is MIT,
+and no Dexie code was copied, so there is no `NOTICE` here. It is deliberately not a
+drop-in: `Dexie` → `Nexie` and migration is a rename. Dexie-branded *identifiers*
+are renamed; API-visible *strings* are not (error `name` values, the schema DSL, the
+`'rw!'`/`'r?'` modes, `':id'`), because consuming code matches on those.
 
-Two differences drive almost everything:
+Four things are load-bearing:
+
+- **The two graphs must stay disjoint.** Nothing under `src/nexie/` may import
+  `src/entry.ts`, `src/wrap-idb-value.ts`, `src/database-extras.ts`,
+  `src/async-iterators.ts` or `src/util.ts`. The decisive reason is not tidiness:
+  `promisifyRequest` in `wrap-idb-value.ts` returns a **native** promise, and
+  `await` on one of those never reads `.then`, so the transaction zone would die on
+  every request. The bonus is that tsdown's unconditional splitting emits no shared
+  chunk, which keeps `dist/index.js` byte-identical. **Verify it, do not assume it:**
+  after any change, `md5sum dist/index.js` against the previous build and check that
+  `dist/chunks/` does not exist. `src/nexie/dbcore/request.ts` duplicates ~30 lines
+  of request promisification on purpose.
+- **The zone is the crux.** `src/nexie/zone/` carries "which transaction am I in"
+  across `await` using two complementary mechanisms — an echo FIFO and `then` as a
+  **getter** that captures the zone synchronously at the await point. Neither works
+  alone; the Phase 0 spike falsified the echo on its own. There is no patching of
+  `globalThis.Promise` and no `ZONE_ECHO_LIMIT`, unlike Dexie. `AsyncLocalStorage`
+  is not an option — `platform: "neutral"`. Every public API must return an
+  `NexiePromise`; a helper handing back a bare `async` function's promise is a bug.
+- **Every read and every write goes through DBCore**, cursor walks included. That is
+  what lets one hooks middleware see all writes and one observability middleware see
+  all reads. A read that bypasses it is a `liveQuery` that silently never re-fires —
+  a failure with no symptom where it is caused. `Collection`'s walk drives a
+  `DBCoreCursor` rather than an `IDBCursor` for exactly this reason.
+- **Invalidation over-approximates on purpose.** `liveQuery` is exact on primary
+  keys and on secondary indexes for `add`; `put`/`delete`/`deleteRange` widen to the
+  whole index, because narrowing them means reading the old record first (the
+  `cacheExistingValues` middleware, not yet written). Keep the direction: a superset
+  costs a wasted re-run, a subset costs a view that silently stops updating.
+
+Phases 0–5 are done (zone/promise/errors, a working DB, the query surface,
+middleware/hooks/events/upgrades, observability + `liveQuery`). Phase 6 is the long
+tail and the gap list is in the package README under **Not implemented yet**; the
+query cache was deferred there deliberately.
+
+`erasableSyntaxOnly` is set: no parameter properties, no enums. `Symbol.observable`
+is read off `Symbol` at runtime with an `'@@observable'` fallback rather than
+declared via `declare global`, which would pollute every consumer's types.
+
+## The two runtimes: `@aibulat/indexeddb-impl` and `@aibulat/indexeddb`
+
+Every other package targets Node. These two must also pass under **Bun**, and
+that is not a formality — four real defects in the implementation surfaced only
+there, all of them latent bugs rather than Bun quirks, and Nexie's zone rests on the
+normative ordering of `Await` and promise-resolve-thenable jobs, which is precisely
+the kind of claim that deserves a second engine (Bun is JSC, Node is V8). Keep both
+`test:bun` scripts green alongside `test`; each pair reports identical totals, and a
+divergence is the signal. CI's `bun` job runs both.
+
+The rest of this section is about `indexeddb-impl`, whose suites are the ones that
+had to change. Two differences drive almost everything:
 
 - **Bun shares one process across test files; `node --test` forks one per file.**
   A side-effect import therefore runs *once* under Bun, so anything that relies

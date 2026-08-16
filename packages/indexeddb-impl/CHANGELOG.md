@@ -1,4 +1,33 @@
+# 0.1.2 — transactions deactivate, and the IDL is honoured
+
+Behavioural changes, so worth reading even though the API is unchanged. All of
+this landed after 0.1.1 was published; the fork entry below describes it in
+full, and this is the summary of what moved between the two releases.
+
+- **Transactions now go inactive.** Previously a transaction was created
+  `"active"` and never left that state, so a request placed from a later task —
+  which a browser rejects with `TransactionInactiveError` — quietly succeeded.
+  **A test suite that relied on that leniency will start failing here, and the
+  failure is the finding**: the same code would already have been broken in a
+  browser.
+- `objectStore()` no longer conflates an inactive transaction with a finished
+  one, `db.transaction(store, "versionchange")` throws `TypeError`, and
+  `addEventListener` honours `once` and `signal` (both were accepted and
+  silently ignored).
+- The WebIDL pass: attributes moved to prototype accessors, readonly attributes
+  lost their setters, interfaces became non-constructible, and
+  `globalThis.indexedDB` is no longer assignable. Feature detection that reads
+  `'x' in SomeInterface.prototype` now answers correctly.
+- Conformance went from 1,488 passing / 25 recorded failures to **1,536 passing
+  / 3**, with all 207 idlharness assertions passing, and the W3C corpus was
+  re-synced from upstream (August 2026, `7327d61f88`). Nothing was added to the
+  expectation manifests.
+
 # 0.1.0 — forked as `@aibulat/indexeddb-impl`
+
+> The conformance and behaviour sections below describe the state as of the
+> latest release rather than what 0.1.0 itself shipped; see the 0.1.2 entry
+> above for what changed after 0.1.1.
 
 Forked from [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB) at
 v6.2.5 and moved into the [`@aibulat/packages`](https://github.com/ngmaibulat/packages)
@@ -17,7 +46,7 @@ eslint, jest, two loose node scripts, mocha, a W3C runner, and QUnit under
 **PhantomJS**, which has been unmaintained since 2018. In practice the QUnit
 suite, ~5,600 lines and 105 tests, no longer ran anywhere.
 
-There is now one runner, `node:test`, over four suites and 1,748 tests, and the
+There is now one runner, `node:test`, over four suites and 1,774 tests, and the
 same suites also pass under `bun test` with identical totals.
 
 - **The QUnit corpus runs headless.** `test/harness/qunit.ts` implements the

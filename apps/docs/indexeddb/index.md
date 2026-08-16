@@ -136,3 +136,21 @@ using db2 = await openDB("articles-db", 1);
 
 Full API reference, including every enhancement and the TypeScript opt-out, is in the
 [package README](https://github.com/ngmaibulat/packages/tree/main/packages/indexeddb#readme).
+
+## The high-level API
+
+Everything above is the low-level API: stores, transactions and cursors, with promises
+instead of requests. The same package also ships **[Nexie](./nexie.md)** at
+`@aibulat/indexeddb/nexie` — a re-implementation of the Dexie 4 API, with a schema DSL,
+a query builder, transactions that join automatically across `await`, and `liveQuery`.
+
+```ts
+import Nexie from "@aibulat/indexeddb/nexie";
+
+const db = new Nexie("MyDB");
+db.version(1).stores({ friends: "++id, name, age" });
+await db.friends.where("age").above(25).toArray();
+```
+
+The two graphs are disjoint, so importing one never pulls in the other and the bundle
+above is unaffected by the existence of the other.

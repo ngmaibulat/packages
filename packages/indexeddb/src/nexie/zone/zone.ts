@@ -47,6 +47,13 @@ export interface Zone {
     transless?: Zone | undefined;
     /** Bypasses the db-open gate, for `on('ready')` subscribers. */
     vip?: boolean | undefined;
+    /**
+     * Where reads made inside this zone are recorded, for `liveQuery`.
+     *
+     * Typed structurally for the same reason as `trans`: it keeps this module
+     * at the bottom of the import graph. It is always an ObservabilitySet.
+     */
+    subscr?: Record<string, unknown> | undefined;
     /** Outstanding promises and enqueued listeners; drives `follow()`. */
     pending: number;
     finalize: () => void;
@@ -144,6 +151,22 @@ export function newZone<R>(fn: () => R, props?: Partial<Zone>): R {
     }
 
     return runInZone(zone, fn);
+}
+
+/**
+ * The nearest enclosing read-observation set, if any.
+ *
+ * Walks the chain rather than reading the current zone: a table operation runs
+ * in a child zone carrying its transaction, so a `liveQuery` querier's `subscr`
+ * is always one or more levels up by the time a read reaches DBCore. Reading
+ * only the current zone would record nothing at all -- and record nothing is
+ * exactly the failure that shows up later as a query that never re-fires.
+ */
+export function getSubscr(): Record<string, unknown> | undefined {
+    for (let zone: Zone | null = currentZone; zone; zone = zone.parent) {
+        if (zone.subscr) return zone.subscr;
+    }
+    return undefined;
 }
 
 /** Retain/release the zone's work counter. Used by NexiePromise. */

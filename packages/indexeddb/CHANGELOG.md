@@ -1,3 +1,65 @@
+# 0.1.2 — Nexie, a second API at `@aibulat/indexeddb/nexie`
+
+The package now offers **two API sets**. The `.` entry is unchanged in every respect — same
+exports, same behaviour, and `dist/index.js` is byte-for-byte what it was before this release,
+which is verified by md5 on every build rather than assumed. The ~1.9 kB brotli'd figure still
+describes it.
+
+The new one is `@aibulat/indexeddb/nexie`: **Nexie**, a re-implementation of the Dexie 4 API for
+callers who would rather write `db.friends.where('age').above(25).toArray()` than open a
+transaction and drive a cursor. It is a clean-room implementation — Dexie is Apache-2.0, this
+package stays MIT, and no Dexie code was copied — and migration from Dexie is a rename:
+`Dexie` → `Nexie`. Error `name` strings, the schema DSL, the `'rw!'`/`'r?'` modes and `':id'` are
+unchanged, because code matches on those.
+
+The two graphs are deliberately disjoint: nothing under `src/nexie/` imports the low-level entry,
+so the bundler emits no shared chunk and neither entry can drag the other in. `dist/nexie.js` is
+about 124 kB unminified.
+
+What is in it: schema versions and upgrades, `Table` CRUD and bulk operations, the full
+`WhereClause` (all 18 operators) and `Collection`, virtual indexes (a `[a+b+c]` index answers
+queries on `[a+b]` and on `a`), transactions with automatic joining across `await`, CRUD hooks,
+`db.on(…)` events, `db.use()` middleware over DBCore, `mapToClass`/`Entity`, addons — and, new in
+this release, **`liveQuery`**.
+
+### `liveQuery`
+
+```ts
+import { liveQuery } from '@aibulat/indexeddb/nexie';
+
+const sub = liveQuery(() => db.friends.where('age').above(25).toArray())
+    .subscribe((friends) => render(friends));
+```
+
+A querier runs inside a zone that records the key ranges of every read it makes; each committed
+transaction publishes the key ranges it wrote; a query re-runs only where the two intersect. So a
+`liveQuery` over `db.friends.get(7)` is not woken by a write to friend 8. Notifications cross
+connections in the same context and, where `BroadcastChannel` exists, other tabs — feature-detected,
+because this package also runs under Node and Bun.
+
+Invalidation is exact on primary keys and on secondary indexes for `add`; `put`, `delete` and range
+deletes widen to the whole index, since knowing which index entries those *remove* would mean
+reading the old record first. The approximation only ever runs a query that need not have run.
+
+### Under the hood
+
+- **Every read now goes through DBCore**, cursor walks included, alongside every write. That is
+  what makes one middleware sufficient to observe a query, and it is also why `db.use()` can now
+  intercept reads: `query`, `openCursor` and an index-aware `count` joined `mutate`, `get`,
+  `getMany` and `count` in the interface.
+- `Collection.delete()`'s range fast path, `Table.upsert()` and `Table.bulkUpdate()` used to write
+  straight to IndexedDB, so CRUD hooks never saw them. They go through `mutate` now, which fixes
+  that as a side effect.
+- `RangeSet`, `mergeRanges` and `rangesOverlap` are exported: a sorted disjoint set of inclusive
+  key ranges, which is what the observability machinery compares.
+
+### Testing
+
+The suite is 388 tests and must report identical totals under `node --test` and `bun test`; CI runs
+both. The zone that carries a transaction across `await` rests on the normative ordering of `Await`
+and promise-resolve-thenable jobs, and Bun is JSC where Node is V8 — a divergence there would be a
+design bug, not a runtime quirk.
+
 # 0.1.1 — bug fixes and additions upstream never shipped
 
 This is where the fork stops being a mirror of idb 8.0.3 and becomes an **API-compatible
