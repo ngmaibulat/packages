@@ -65,6 +65,18 @@ export class NexiePromise<T> implements PromiseLike<T> {
      */
     static rejectionMapper: (reason: unknown) => unknown = (reason) => reason;
 
+    /**
+     * Assert the engine's own invariant. Surfaced as `Nexie.debug`.
+     *
+     * The echo FIFO is kept 1:1 with pending native resume jobs, which holds
+     * only while a settlement enqueues exactly one reaction. Fulfilling with a
+     * thenable would slide a `PromiseResolveThenableJob` in between and
+     * desynchronise it -- and the damage is a zone silently attributed to the
+     * wrong continuation, not an exception. Adoption happens inside `_resolve`,
+     * so this should be unreachable; that is exactly why it is worth asserting.
+     */
+    static debug = false;
+
     private _state: State = PENDING;
     private _value: unknown = undefined;
     private _listeners: Listener[] = [];
@@ -135,6 +147,18 @@ export class NexiePromise<T> implements PromiseLike<T> {
     }
 
     private _settle(state: State, value: unknown): void {
+        if (
+            NexiePromise.debug &&
+            state === FULFILLED &&
+            isThenable(value)
+        ) {
+            throw new Error(
+                'Nexie internal invariant violated: a NexiePromise fulfilled with a ' +
+                    'thenable. Adoption must happen inside the engine, or the zone echo ' +
+                    'desynchronises.',
+            );
+        }
+
         this._state = state;
         this._value = value;
 
@@ -444,7 +468,15 @@ export class NexiePromise<T> implements PromiseLike<T> {
         return new NexiePromise<void>((resolve, reject) => {
             newZone(() => {
                 const zone = getZone();
+                // Compose, never replace. `newZone` has already installed a
+                // finalize that decrements the PARENT's counter, and dropping
+                // it strands the parent at a non-zero count forever. That only
+                // bites when one follow sits inside another -- an `on('populate')`
+                // subscriber opening a transaction scope, say -- and the symptom
+                // is a database that opens and never resolves.
+                const parentFinalize = zone.finalize;
                 zone.finalize = () => {
+                    parentFinalize();
                     // Quiescence is only meaningful once the virtual queue has
                     // drained: the counter can legitimately touch zero mid-tick.
                     atEndOfTick(() => {

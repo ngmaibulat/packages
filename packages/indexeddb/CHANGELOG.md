@@ -1,3 +1,88 @@
+# 0.1.3 — Nexie completes its API surface
+
+The `.` entry is untouched again: `dist/index.js` is byte-identical, verified by
+md5 on every build.
+
+## The transaction zone now reports what it used to lose
+
+Awaiting a foreign promise inside `db.transaction()` kills the zone — that is a
+property of `await` on a native promise, not something a library can hide. Until now
+the next table call quietly opened a **second** transaction and the failure surfaced
+later, if at all, as `PrematureCommitError`. It now rejects with **`ForeignAwaitError`**
+naming the fix, at the operation that caused it.
+
+The check is narrow rather than heuristic. It fires only when the scope's own zone is
+quiescent — every promise this engine created inside it has settled while the body has
+not finished, which is precisely the state of being suspended on something we cannot
+see — and only for a table that scope covers. Unrelated concurrent work is not flagged
+for running at the same time as a transaction; there is a test that says so.
+
+`Nexie.ignoreTransaction(fn)` runs work deliberately outside the ambient transaction
+(and opts out of the diagnosis), and `Nexie.vip(fn)` lifts the open gate.
+
+## Two bugs found on the way
+
+- **`NexiePromise.follow` clobbered the zone's finalizer.** `newZone` installs one
+  that decrements the parent zone's work counter; `follow` replaced it outright, so a
+  follow nested inside another follow stranded its parent above zero forever. The
+  symptom was a database that opened and never resolved, and it was reachable from
+  ordinary code: an `on('populate')` subscriber that called `db.transaction(...)`.
+- **`on('populate')` and `version().upgrade()` did not carry their transaction into
+  the callback's zone.** `trans.table('items')` worked, `db.items` deadlocked. Both
+  now pass the transaction down, so either spelling does the same thing.
+
+## Opening a database whose schema you never declared
+
+Leave `version().stores()` out and Nexie reads the schema from the database itself —
+stores, primary keys, index shapes, `multiEntry` and compound keyPaths included:
+
+```ts
+const db = new Nexie('SomeoneElsesDB');
+await db.open();
+db.dynamicallyOpened();               // true
+await db.table('friends').toArray();  // a working database, not a description
+```
+
+Opening one that does not exist is a `NoSuchDatabaseError` rather than a silently
+created empty database; `{ allowEmptyDB: true }` opts into creating it. **This changes
+an existing behaviour:** `open()` with no declared version used to reject with
+`SchemaError` unconditionally.
+
+## `liveQuery` invalidation is now exact for `put` and `delete`
+
+A `put` reads the record it displaces, so a query on `where('name').equals('Alice')`
+is woken when Alice is renamed — the new record says nothing about the old value, and
+before this the whole index had to be invalidated to be safe. The read happens only
+while something is subscribed, so an application with no `liveQuery` pays nothing.
+Range deletes remain widened to the whole index, deliberately: being precise there
+means reading an unbounded number of records in order to invalidate them.
+
+## Additions
+
+- `Nexie.exists(name)`, `Nexie.getDatabaseNames()`, `Nexie.delete(name)`.
+- `Nexie.debug` — asserts the engine's own invariant, that our thenable never fulfils
+  with another thenable. Off by default; worth having on in development.
+- `Nexie.semVer`, substituted into the bundle at build time rather than hardcoded, so
+  it cannot drift from the manifest. Running the sources directly it reads
+  `0.0.0-src`, which is honest rather than plausible.
+- Options: `allowEmptyDB`, `chromeTransactionDurability`, `modifyChunkSize`,
+  `maxConnections`.
+- `modifyChunkSize` (default 200) splits `Collection.modify`'s write-back into several
+  mutations instead of one enormous request. The walk still collects first — writing
+  through the cursor would mutate the index being iterated.
+- `maxConnections` (default 100) is a leak detector, not a limit: it warns once per
+  database and never throws. Exported alongside `connectionCount(name)`.
+- **bfcache support.** A page frozen into the back/forward cache has its database
+  closed on `pagehide` and reopened on `pageshow`, because a browser may close those
+  connections while the page sits there and hand it back looking intact. Guarded on
+  `document`, and tested against a stand-in page rather than left to rot.
+
+## Still not here, on purpose
+
+The query result cache (`cache: 'immutable' | 'cloned'`) is a performance layer, not a
+correctness one, and carries the highest bug density per line in Dexie. The DBCore
+read path is the seam it would plug into if that changes.
+
 # 0.1.2 — Nexie, a second API at `@aibulat/indexeddb/nexie`
 
 The package now offers **two API sets**. The `.` entry is unchanged in every respect — same

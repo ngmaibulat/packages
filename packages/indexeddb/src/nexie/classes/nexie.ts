@@ -1,6 +1,6 @@
 import { exceptions, errnames, fullNameExceptions } from '../errors/errors.ts';
 import { NexiePromise } from '../zone/nexie-promise.ts';
-import { getZone, newZone } from '../zone/zone.ts';
+import { getZone, isVip, newZone } from '../zone/zone.ts';
 import { Table } from './table.ts';
 import { Transaction, parseMode } from './transaction.ts';
 import { Version } from './version.ts';
@@ -16,6 +16,13 @@ import { makeClassConstructor } from '../functions/make-class-constructor.ts';
 import { createIdbCore } from '../dbcore/dbcore-idb.ts';
 import { buildMiddlewareStack } from '../dbcore/middleware-stack.ts';
 import { createHooksMiddleware } from '../hooks/hooks-middleware.ts';
+import { schemaFromIdb } from './schema-from-idb.ts';
+import { NEXIE_VERSION } from '../globals/constants.ts';
+import {
+    registerConnection,
+    unregisterConnection,
+} from '../globals/connections.ts';
+import { observeBfcache } from '../globals/bfcache.ts';
 import { createObservabilityMiddleware } from '../live-query/observability-middleware.ts';
 import type { DBCore, Middleware } from '../types/dbcore.ts';
 import type { DbSchema, IndexSpec, TableSchema } from '../types/schema.ts';
@@ -29,6 +36,8 @@ const OpenFailedError = exceptions['OpenFailed']!;
 const ReadOnlyError = exceptions['ReadOnly']!;
 const SubTransactionError = exceptions['SubTransaction']!;
 const InvalidArgumentError = exceptions['InvalidArgument']!;
+const NoSuchDatabaseError = exceptions['NoSuchDatabase']!;
+const UnsupportedError = exceptions['Unsupported']!;
 
 export interface NexieDependencies {
     indexedDB: IDBFactory | null;
@@ -42,6 +51,29 @@ export interface NexieOptions {
     indexedDB?: IDBFactory;
     IDBKeyRange?: typeof IDBKeyRange;
     addons?: Addon[];
+    /**
+     * Let a dynamic open succeed against a database that does not exist yet,
+     * creating an empty one. Off by default: opening a database you never
+     * declared a schema for and finding nothing in it is far more often a typo
+     * in the name than an intention.
+     */
+    allowEmptyDB?: boolean;
+    /**
+     * `'relaxed'` lets the browser acknowledge a commit before it has reached
+     * disk — much faster, and safe for data you can reconstruct. Chromium reads
+     * it; other engines ignore it, which is why the name says so.
+     */
+    chromeTransactionDurability?: 'default' | 'strict' | 'relaxed';
+    /**
+     * How many records `Collection.modify` writes back per request. Bounds the
+     * size of a single mutation rather than the memory the walk collects.
+     */
+    modifyChunkSize?: number;
+    /**
+     * How many open connections to this database before a leak is assumed and
+     * a warning printed. Never an error -- see globals/connections.ts.
+     */
+    maxConnections?: number;
 }
 
 interface OpenState {
@@ -100,6 +132,22 @@ export class Nexie {
     _middlewares: Middleware<DBCore>[] = [];
     private _coreCache: DBCore | null = null;
 
+    /**
+     * Explicit `db.transaction(...)` scopes that have not finished.
+     *
+     * Only used to diagnose a lost zone: see `_lostScopeFor`.
+     */
+    _openScopes = new Set<Transaction>();
+
+    /** Set when the schema was read from the database instead of declared. */
+    private _dynamicallyOpened = false;
+
+    /** Removes the page-lifecycle listeners; null outside a browser. */
+    private _unobserveBfcache: (() => void) | null = null;
+
+    /** Whether the bfcache handler closed this database and owes it a reopen. */
+    private _reopenAfterBfcache = false;
+
     constructor(name: string, options?: NexieOptions) {
         this.name = name;
         this._options = { autoOpen: true, ...options };
@@ -138,6 +186,27 @@ export class Nexie {
         // mechanism is the one the library's own features are built on.
         this._middlewares.push(createHooksMiddleware());
         this._middlewares.push(createObservabilityMiddleware());
+
+        // A page frozen into the bfcache may have its connections closed by the
+        // browser and then be brought back with them apparently intact. Close
+        // deliberately and reopen on the way out, so the state is one we chose.
+        this._unobserveBfcache = observeBfcache({
+            onHide: () => {
+                if (!this.idbdb) return;
+                this._reopenAfterBfcache = true;
+                this.close();
+            },
+            onShow: () => {
+                if (!this._reopenAfterBfcache) return;
+                this._reopenAfterBfcache = false;
+                // Nothing is awaiting this: a restored page reopens in the
+                // background, and any operation racing it joins the same open.
+                void this.open().catch(() => {
+                    // A reopen that fails leaves the database closed, which is
+                    // exactly what it was a moment ago.
+                });
+            },
+        });
 
         for (const addon of options?.addons ?? Nexie.addons) addon(this);
     }
@@ -267,6 +336,27 @@ export class Nexie {
         return table as Table<T, TKey>;
     }
 
+    /**
+     * An open scope covering `tableName` whose body is suspended on a foreign
+     * promise, if there is one.
+     *
+     * This is the whole basis of `ForeignAwaitError`, and it is deliberately
+     * narrow. A scope only qualifies once `follow` has told us every promise
+     * this engine created inside it has settled while the body is still
+     * running — which is precisely the state in which the zone has been lost.
+     * An ordinary open scope, one awaiting our own operations, never matches,
+     * so unrelated concurrent code is not flagged for merely running at the
+     * same time as a transaction.
+     */
+    _lostScopeFor(tableName: string): Transaction | null {
+        for (const scope of this._openScopes) {
+            if (scope._zoneLost && scope.storeNames.includes(tableName)) {
+                return scope;
+            }
+        }
+        return null;
+    }
+
     // --------------------------------------------------------------- open
 
     isOpen(): boolean {
@@ -292,6 +382,16 @@ export class Nexie {
         return new DatabaseClosedError();
     }
 
+    /**
+     * True when the schema was read from the database rather than declared.
+     *
+     * See `_openDynamically`. Worth checking before an upgrade: a dynamically
+     * opened database has no declared versions to upgrade from.
+     */
+    dynamicallyOpened(): boolean {
+        return this._dynamicallyOpened;
+    }
+
     open(): NexiePromise<Nexie> {
         if (this.idbdb) return NexiePromise.resolve(this);
         if (this._state.openPromise) return this._state.openPromise;
@@ -301,12 +401,10 @@ export class Nexie {
             return NexiePromise.reject(new MissingAPIError());
         }
 
+        // No declared schema means "open whatever is there and tell me what it
+        // is" rather than an error.
         if (this._versions.length === 0) {
-            return NexiePromise.reject(
-                new SchemaError(
-                    'No versions declared. Call db.version(1).stores({...}) first.',
-                ),
-            );
+            return this._openDynamically(indexedDB);
         }
 
         this._state.isBeingOpened = true;
@@ -357,6 +455,7 @@ export class Nexie {
             request.onsuccess = () => {
                 const idbdb = request.result;
                 this.idbdb = idbdb;
+                registerConnection(this.name, this._options.maxConnections);
                 this._state.isBeingOpened = false;
                 this._state.openComplete = true;
 
@@ -365,13 +464,18 @@ export class Nexie {
                 };
                 idbdb.onclose = (event) => {
                     this.idbdb = null;
+                    unregisterConnection(this.name);
                     this.on['close']!.fire(event);
                 };
 
                 // `ready` subscribers may return a promise, and open() does not
-                // resolve until they have all settled.
+                // resolve until they have all settled. They run VIP: the open
+                // they are part of has not resolved yet, so an operation that
+                // waited for it would wait forever.
                 NexiePromise.resolve(upgrading ?? undefined)
-                    .then(() => this.on['ready']!.fire(this))
+                    .then(() =>
+                        Nexie.vip(() => this.on['ready']!.fire(this)),
+                    )
                     .then(() => resolve(this))
                     .catch(reject);
             };
@@ -381,6 +485,95 @@ export class Nexie {
                 this._state.openComplete = true;
                 this._state.dbOpenError = request.error;
                 reject(new OpenFailedError(request.error));
+            };
+        });
+
+        this._state.openPromise = openPromise;
+
+        return openPromise.catch((error) => {
+            this._state.openPromise = null;
+            this._state.dbOpenError = error;
+            throw error;
+        });
+    }
+
+    /**
+     * Open a database whose schema was never declared, adopting the one it
+     * already has.
+     *
+     * Opening without a version is what makes this possible: IndexedDB then
+     * gives you the current version rather than creating or upgrading. It only
+     * fires `upgradeneeded` when the database did not exist at all — and there
+     * the default is to refuse, because a caller who declared no schema and
+     * named a database that is not there has almost certainly mistyped it. The
+     * upgrade transaction is aborted so the empty database is not left behind.
+     */
+    private _openDynamically(indexedDB: IDBFactory): NexiePromise<Nexie> {
+        this._state.isBeingOpened = true;
+        this._state.dbOpenError = null;
+
+        const openPromise = new NexiePromise<Nexie>((resolve, reject) => {
+            const request = indexedDB.open(this.name);
+            let missing = false;
+
+            request.onupgradeneeded = () => {
+                if (this._options.allowEmptyDB) return;
+                missing = true;
+                try {
+                    request.transaction!.abort();
+                } catch {
+                    // The abort failing changes nothing: onerror still rejects.
+                }
+            };
+
+            request.onblocked = (event) => {
+                this.on['blocked']!.fire(event);
+            };
+
+            request.onsuccess = () => {
+                const idbdb = request.result;
+                this.idbdb = idbdb;
+                registerConnection(this.name, this._options.maxConnections);
+                this._dynamicallyOpened = true;
+                this._state.isBeingOpened = false;
+                this._state.openComplete = true;
+
+                idbdb.onversionchange = (event) => {
+                    this.on['versionchange']!.fire(event);
+                };
+                idbdb.onclose = (event) => {
+                    this.idbdb = null;
+                    unregisterConnection(this.name);
+                    this.on['close']!.fire(event);
+                };
+
+                try {
+                    this._dbSchema = schemaFromIdb(idbdb);
+                    this._storeNames = Object.keys(this._dbSchema);
+                    this._coreCache = null;
+                    this._installTableApi();
+                } catch (error) {
+                    reject(error);
+                    return;
+                }
+
+                NexiePromise.resolve()
+                    .then(() => Nexie.vip(() => this.on['ready']!.fire(this)))
+                    .then(() => resolve(this))
+                    .catch(reject);
+            };
+
+            request.onerror = () => {
+                this._state.isBeingOpened = false;
+                this._state.openComplete = true;
+                const error = missing
+                    ? new NoSuchDatabaseError(
+                          `Database ${this.name} does not exist. Declare a schema with ` +
+                              'version().stores(), or pass { allowEmptyDB: true } to create it.',
+                      )
+                    : new OpenFailedError(request.error);
+                this._state.dbOpenError = error;
+                reject(error);
             };
         });
 
@@ -436,22 +629,34 @@ export class Nexie {
                     // A brand-new database has nothing to migrate; it gets
                     // `populate` instead, once all the stores exist.
                     if (isNewDatabase || !upgrader) return undefined;
+                    // The zone props are passed down rather than left to the
+                    // fresh zone `follow` creates: without them an upgrader
+                    // calling `db.table(...)` rather than `trans.table(...)`
+                    // finds no ambient transaction, opens its own, and waits
+                    // for the open it is itself part of.
                     return NexiePromise.follow(() => {
                         upgrader(trans);
-                    });
+                    }, { trans, vip: true });
                 });
             }
 
             if (isNewDatabase) {
                 chain = chain.then(() =>
-                    NexiePromise.follow(() => {
-                        this.on['populate']!.fire(trans);
-                    }),
+                    NexiePromise.follow(
+                        () => {
+                            this.on['populate']!.fire(trans);
+                        },
+                        { trans, vip: true },
+                    ),
                 );
             }
 
             return chain;
-        }, { trans });
+            // VIP: `idbdb` is not assigned until onsuccess, which fires after
+            // this transaction commits. An upgrader or a populate subscriber
+            // that calls db.transaction() would otherwise wait on the open it
+            // is itself part of.
+        }, { trans, vip: true });
     }
 
     /** Create, drop and re-index object stores to move `from` to `to`. */
@@ -539,6 +744,7 @@ export class Nexie {
         if (this.idbdb) {
             this.idbdb.close();
             this.idbdb = null;
+            unregisterConnection(this.name);
         }
         this._state.openPromise = null;
         this._state.openComplete = false;
@@ -682,7 +888,10 @@ export class Nexie {
             }
         }
 
-        if (!this.isOpen()) {
+        // A VIP caller is inside the open it would otherwise wait for, and it
+        // has a parent transaction to ride on -- that is the whole point of
+        // being VIP. Anything else has to go through the gate.
+        if (!this.isOpen() && !(isVip() && parent)) {
             if (!this._options.autoOpen) {
                 return NexiePromise.reject(this._closedError());
             }
@@ -729,9 +938,133 @@ export class Nexie {
     static Promise = NexiePromise;
     static errnames = errnames;
 
+    /** This library's version, as `x.y.z`. A test keeps it honest. */
+    static semVer = NEXIE_VERSION;
+
+    /**
+     * Extra checking, off by default.
+     *
+     * It turns on the engine's own invariant: our thenable must never fulfil
+     * with another thenable, because the echo FIFO is only correct while each
+     * settlement enqueues exactly one reaction. A violation is silent
+     * corruption of the zone rather than a crash, so there is nowhere better to
+     * catch it than an assertion you can switch on.
+     */
+    static get debug(): boolean {
+        return NexiePromise.debug;
+    }
+
+    static set debug(value: boolean) {
+        NexiePromise.debug = value;
+    }
+
+    /** Delete a database by name, without declaring a schema for it. */
+    static delete(dbName: string): NexiePromise<void> {
+        return new Nexie(dbName).delete();
+    }
+
+    /**
+     * Whether a database of this name exists.
+     *
+     * `databases()` answers directly where it is implemented. Everywhere else
+     * the only way to ask is to open the database and watch for
+     * `upgradeneeded`, which fires exactly when it had to be created — so the
+     * fallback aborts that upgrade, leaving nothing behind.
+     */
+    static exists(dbName: string): NexiePromise<boolean> {
+        const indexedDB = Nexie.dependencies.indexedDB;
+        if (!indexedDB) return NexiePromise.reject(new MissingAPIError());
+
+        if (typeof indexedDB.databases === 'function') {
+            return Nexie.getDatabaseNames().then((names) =>
+                names.includes(dbName),
+            );
+        }
+
+        return new NexiePromise<boolean>((resolve, reject) => {
+            const request = indexedDB.open(dbName);
+            let existed = true;
+
+            request.onupgradeneeded = () => {
+                existed = false;
+                try {
+                    request.transaction!.abort();
+                } catch {
+                    // Nothing to add: onerror resolves the answer below.
+                }
+            };
+            request.onsuccess = () => {
+                request.result.close();
+                resolve(existed);
+            };
+            request.onerror = () => {
+                // The abort above lands here, and means "it did not exist".
+                if (!existed) resolve(false);
+                else reject(new OpenFailedError(request.error));
+            };
+        });
+    }
+
+    /** Every database on this origin, by name. */
+    static getDatabaseNames(): NexiePromise<string[]> {
+        const indexedDB = Nexie.dependencies.indexedDB;
+        if (!indexedDB) return NexiePromise.reject(new MissingAPIError());
+
+        if (typeof indexedDB.databases !== 'function') {
+            return NexiePromise.reject(
+                new UnsupportedError(
+                    'indexedDB.databases() is not available in this environment, ' +
+                        'so the databases on this origin cannot be enumerated.',
+                ),
+            );
+        }
+
+        return NexiePromise.resolve(indexedDB.databases()).then((databases) =>
+            databases
+                .map((database) => database.name)
+                .filter((name): name is string => typeof name === 'string'),
+        );
+    }
+
     /** The transaction the calling code is currently inside, if any. */
     static get currentTransaction(): Transaction | null {
         return (getZone().trans as Transaction | undefined) ?? null;
+    }
+
+    /**
+     * Run `scopeFunc` outside the current transaction.
+     *
+     * Operations inside it open transactions of their own instead of joining
+     * the ambient one — for logging or bookkeeping that must survive a rollback
+     * of the work that triggered it. It also suppresses `ForeignAwaitError`,
+     * since stepping outside the transaction is the declared intent.
+     */
+    static ignoreTransaction<R>(scopeFunc: () => R): R {
+        const zone = getZone();
+        if (!zone.trans) return scopeFunc();
+        return newZone(scopeFunc, {
+            trans: undefined,
+            transless: zone.transless ?? zone,
+        });
+    }
+
+    /**
+     * Run `scopeFunc` with the open gate lifted.
+     *
+     * A database being opened is not yet open to anyone else, so an operation
+     * inside `on('populate')` or `on('ready')` that reaches for the database
+     * would wait on the very open it is part of, and deadlock. Those two
+     * callbacks are already VIP; this exposes the same thing to code they call
+     * into. The ambient transaction is preserved, so a populate subscriber
+     * still writes into the upgrade transaction.
+     */
+    static vip<R>(scopeFunc: () => R): R {
+        const zone = getZone();
+        return newZone(scopeFunc, {
+            vip: true,
+            trans: zone.trans,
+            transless: zone.transless,
+        });
     }
 
     /**

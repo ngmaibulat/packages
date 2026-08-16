@@ -298,14 +298,30 @@ Four things are load-bearing:
   `cacheExistingValues` middleware, not yet written). Keep the direction: a superset
   costs a wasted re-run, a subset costs a view that silently stops updating.
 
-Phases 0–5 are done (zone/promise/errors, a working DB, the query surface,
-middleware/hooks/events/upgrades, observability + `liveQuery`). Phase 6 is the long
-tail and the gap list is in the package README under **Not implemented yet**; the
-query cache was deferred there deliberately.
+**All six phases are done.** The API surface is complete apart from the query result
+cache (`cache: 'immutable' | 'cloned'`), which is deliberately absent — it is a
+performance layer, `liveQuery` is exact without it, and it is the highest bug density
+per line in Dexie. The README's **Differences from Dexie** section is the canonical
+statement of what is not there; keep it true.
+
+Two more things that are load-bearing, both found by tests rather than reasoning:
+
+- **`NexiePromise.follow` must compose the zone's finalizer, never replace it.**
+  `newZone` installs one that decrements the parent zone's counter, and a `follow`
+  nested inside another `follow` — an `on('populate')` subscriber opening a
+  transaction scope — strands the parent above zero forever if it is dropped. The
+  symptom is a database that opens and never resolves.
+- **Nothing may add a stray promise listener in a non-global zone.** Every listener
+  job arms one echo, and the FIFO is only correct while echoes pair 1:1 with native
+  resume jobs. A listener whose job enqueues no resume job hands its zone to whatever
+  runs next — a nested scope's zone leaked into the caller's continuation exactly
+  this way. `Transaction._zoneLost` is computed on demand for that reason.
 
 `erasableSyntaxOnly` is set: no parameter properties, no enums. `Symbol.observable`
 is read off `Symbol` at runtime with an `'@@observable'` fallback rather than
 declared via `declare global`, which would pollute every consumer's types.
+`Nexie.semVer` is substituted by tsdown's `define` from package.json, so it cannot
+drift; running the sources directly it reads `0.0.0-src`.
 
 ## The two runtimes: `@aibulat/indexeddb-impl` and `@aibulat/indexeddb`
 

@@ -46,11 +46,19 @@ export function enterTransactionScope<R>(
 
         let returned: unknown;
         const followed = NexiePromise.follow(() => {
+            // Recorded so `Transaction._zoneLost` can ask this zone whether the
+            // body still has work of ours outstanding.
+            trans._scopeZone = getZone();
             returned = scopeFunc.call(trans, trans);
         }, zoneProps);
 
+        // Registered for the whole life of the scope, so a table call that has
+        // lost the zone can find its way back to the scope it belongs to.
+        db._openScopes.add(trans);
+
         const settled = isThenable(returned)
             ? NexiePromise.resolve(returned).then((value) => {
+                  trans._bodyDone = true;
                   if (!trans.active) {
                       // Prefer the recorded cause: an explicit abort(), or the
                       // error that aborted the transaction, is far more useful
@@ -78,6 +86,10 @@ export function enterTransactionScope<R>(
             .catch((error) => {
                 trans._reject(error);
                 throw error;
+            })
+            .finally(() => {
+                trans._bodyDone = true;
+                db._openScopes.delete(trans);
             });
     });
 }

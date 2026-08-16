@@ -169,6 +169,20 @@ export function getSubscr(): Record<string, unknown> | undefined {
     return undefined;
 }
 
+/**
+ * True when the caller is inside a VIP scope.
+ *
+ * Walks the chain for the same reason `getSubscr` does: an `on('populate')`
+ * subscriber that opens a nested scope is still VIP, and reading only the
+ * current zone would lose that one level down.
+ */
+export function isVip(): boolean {
+    for (let zone: Zone | null = currentZone; zone; zone = zone.parent) {
+        if (zone.vip) return true;
+    }
+    return false;
+}
+
 /** Retain/release the zone's work counter. Used by NexiePromise. */
 export function retain(zone: Zone): void {
     if (!zone.global) zone.pending++;

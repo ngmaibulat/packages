@@ -617,6 +617,50 @@ const data = await Nexie.waitFor(fetch('/api/friends').then((r) => r.json()));
 
 `Nexie.currentTransaction` is the transaction the calling code is inside, or `null`.
 
+If a foreign `await` does slip through, you get a **`ForeignAwaitError`** naming the fix rather than a second transaction opened behind your back:
+
+```
+friends: an open transaction on this table is waiting on a promise this library
+did not create, so its scope has been lost. Await only Nexie promises inside a
+transaction, wrap foreign ones in Nexie.waitFor(), or use
+Nexie.ignoreTransaction() if this call is genuinely unrelated to it.
+```
+
+`Nexie.ignoreTransaction(fn)` is the other side of that: it runs `fn` outside the ambient transaction, so bookkeeping that must survive a rollback of the work that triggered it gets a transaction of its own.
+
+## Opening a database you did not declare
+
+Skip `version().stores()` entirely and Nexie reads the schema out of the database instead — for tooling, migrations, or just finding out what is in there:
+
+```ts
+const db = new Nexie('SomeoneElsesDB');
+await db.open();
+
+db.dynamicallyOpened();                      // true
+db.tables.map((t) => t.name);                // whatever is actually there
+await db.table('friends').toArray();         // and it works
+```
+
+Opening a database that does not exist this way is a `NoSuchDatabaseError`, not a silently created empty one — pass `{ allowEmptyDB: true }` if creating it is what you meant. Related statics: `Nexie.exists(name)`, `Nexie.getDatabaseNames()` and `Nexie.delete(name)`.
+
+## Options
+
+```ts
+new Nexie('MyDB', {
+    autoOpen: true,                          // open on first use (default)
+    allowEmptyDB: false,                     // see above
+    chromeTransactionDurability: 'relaxed',  // faster commits, Chromium reads it
+    modifyChunkSize: 200,                    // records per write-back request
+    maxConnections: 100,                     // leak warning threshold
+    addons: [],
+    indexedDB, IDBKeyRange,                  // inject an implementation
+});
+```
+
+`Nexie.debug = true` turns on the engine's own invariant assertion — cheap, and worth having on in development. `Nexie.semVer` is the library version.
+
+In a browser, a page frozen into the **bfcache** has its database closed on `pagehide` and reopened on `pageshow`, because a browser may close those connections while the page sits there and hand it back looking intact.
+
 ## `liveQuery`
 
 A query that re-runs itself when its own result could have changed:
@@ -637,7 +681,7 @@ The querier runs in a zone that records every read it makes, down to the key ran
 Two things to know:
 
 - The same zone rule applies: **await only Nexie promises inside a querier**, or the reads after that point go unrecorded and the query stops re-running for them.
-- Invalidation is exact on primary keys, and exact on secondary indexes for `add`. For `put`, `delete` and range deletes it widens to the whole index, because knowing which index entries those *remove* means reading the old record first. The approximation is deliberate and one-directional: it re-runs a query that need not have re-run, never the reverse.
+- Invalidation is exact on primary keys, and on secondary indexes for `add`, `put` and `delete` — a `put` reads the record it displaces, so a query watching the *old* value of a renamed field is woken too. That read happens only while something is subscribed, so an application with no `liveQuery` pays nothing for it. Range deletes are the one case still widened to the whole index, since being precise there would mean reading an unbounded number of records. The approximation is one-directional by design: it re-runs a query that need not have re-run, never the reverse.
 
 ## Extending it
 
@@ -664,11 +708,14 @@ db.use({
 
 CRUD hooks (`db.friends.hook('creating' | 'reading' | 'updating' | 'deleting', …)`), database events (`db.on('populate' | 'ready' | 'blocked' | 'versionchange' | 'close')`), per-version `upgrade()`, `mapToClass`, `Entity` and `Nexie.addons` are all present.
 
-## Not implemented yet
+## Differences from Dexie
 
-Nexie is being built in phases and this is the honest list of what is still missing, so nothing has to be discovered by its absence:
+The API surface is complete, with two deliberate exceptions:
 
-`Nexie.vip`, `Nexie.ignoreTransaction`, `ForeignAwaitError` (a foreign `await` currently surfaces as `PrematureCommitError`), `Nexie.getDatabaseNames`, `Nexie.exists`, `maxConnections`, `chromeTransactionDurability`, `allowEmptyDB`, `modifyChunkSize` chunking, `Nexie.debug`, `Nexie.semVer`, `dynamicallyOpened`, bfcache support, and the query result cache (`cache: 'immutable' | 'cloned'`). The `Dexie.Table<T, K>` namespace shim is deliberately dropped — import the types instead: `import type { Table } from '@aibulat/indexeddb/nexie'`.
+- **No query result cache.** Dexie's `cache: 'immutable' | 'cloned'` keeps query results in memory and updates them optimistically. It is a performance layer rather than a correctness one — `liveQuery` is exact without it — and it carries the highest bug density per line in Dexie, so it is not here. The DBCore read path every query now goes through is the seam it would plug into.
+- **No `Dexie.Table<T, K>` namespace shim.** Import the types instead: `import type { Table, Collection } from '@aibulat/indexeddb/nexie'`.
+
+Two things are shaped differently rather than missing: `Nexie.vip(fn)` is a function rather than a property, and long-stack support is replaced by `Nexie.debug`, which asserts the engine's own invariant instead of rewriting stack traces.
 
 # Developing
 
@@ -682,7 +729,7 @@ pnpm run test        # node:test against @aibulat/indexeddb-impl
 pnpm run test:bun    # the same suite under Bun, and the totals must match
 ```
 
-The suite is 389 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Some of the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
+The suite is 425 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Some of the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
 
 It must report **identical totals under Node and Bun**. That is not ceremony: Nexie's transaction zone rests on the normative ordering of `Await` and promise-resolve-thenable jobs, and Bun is JSC where Node is V8. A divergence there is a bug in the design rather than a runtime quirk, which is why there are no per-runtime expectations to absorb one.
 

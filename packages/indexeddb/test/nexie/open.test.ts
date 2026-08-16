@@ -75,13 +75,15 @@ suite('open and close', () => {
         await dispose(second);
     });
 
-    test('opening with no declared version is rejected', async () => {
+    test('opening a database that does not exist with no schema is rejected', async () => {
+        // No declared version means "open what is already there". Nothing is,
+        // so the answer names that rather than quietly creating an empty one.
         const db = new Nexie(freshName());
         let caught: unknown;
         await db.open().catch((error) => {
             caught = error;
         });
-        assert.strictEqual((caught as Error).name, 'SchemaError');
+        assert.strictEqual((caught as Error).name, 'NoSuchDatabaseError');
     });
 
     test('version() after open is rejected', async () => {

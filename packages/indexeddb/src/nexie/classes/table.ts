@@ -20,6 +20,7 @@ import type { DBCoreTable } from '../types/dbcore.ts';
 const BulkError = exceptions['Bulk']!;
 const InvalidArgumentError = exceptions['InvalidArgument']!;
 const ConstraintError = exceptions['Constraint']!;
+const ForeignAwaitError = exceptions['ForeignAwait']!;
 
 export interface BulkOptions {
     allKeys?: boolean;
@@ -57,11 +58,32 @@ export class Table<T = any, TKey = IndexableType> {
     ): NexiePromise<R> {
         // zone.trans is stored structurally so the zone module stays at the
         // bottom of the import graph; it is always a Transaction in practice.
-        const ambient = getZone().trans as Transaction | undefined;
+        const zone = getZone();
+        const ambient = zone.trans as Transaction | undefined;
         const trans = this._tx ?? ambient;
 
         if (trans && trans.db === this.db) {
             return trans._promise(mode, () => fn(trans), bWriteLock);
+        }
+
+        // No transaction in sight. If a scope on this table is open and has
+        // lost its zone, this call almost certainly belongs to it -- and
+        // opening a transaction of its own would break the atomicity the caller
+        // asked for, silently. `transless` means the caller said
+        // `Nexie.ignoreTransaction`, which is exactly this on purpose.
+        if (!ambient && !zone.transless) {
+            const lost = this.db._lostScopeFor(this.name);
+            if (lost) {
+                return NexiePromise.reject(
+                    new ForeignAwaitError(
+                        `${this.name}: an open transaction on this table is waiting on a promise ` +
+                            'this library did not create, so its scope has been lost. Await only ' +
+                            'Nexie promises inside a transaction, wrap foreign ones in ' +
+                            'Nexie.waitFor(), or use Nexie.ignoreTransaction() if this call is ' +
+                            'genuinely unrelated to it.',
+                    ),
+                );
+            }
         }
 
         return tempTransaction(this.db, mode, [this.name], fn, bWriteLock);

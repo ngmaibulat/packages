@@ -114,6 +114,40 @@ suite('observability: writes', () => {
         assert.isTrue(primary.hasKey(2));
     });
 
+    test('a put publishes the index key it vacated, not just the new one', async () => {
+        await db.table('friends').add({ name: 'Alice', age: 30 });
+
+        // captureMutations subscribes, which is what turns on the read of the
+        // record being displaced -- without it there is nothing to be precise
+        // for, and the middleware does not pay for the round trip.
+        const seen = await captureMutations(() =>
+            db.table('friends').update(1, { name: 'Alicia' }),
+        );
+
+        const byName = seen[0]![keyFor('friends', 'name')]!;
+        assert.isTrue(byName.hasKey('Alicia'), 'the new value');
+        assert.isTrue(
+            byName.hasKey('Alice'),
+            'and the old one, or a query on it would never be woken',
+        );
+        assert.isFalse(byName.hasKey('Bob'), 'but not the whole index');
+    });
+
+    test('a delete publishes the index keys of the record removed', async () => {
+        await db.table('friends').bulkAdd([
+            { name: 'Alice', age: 30 },
+            { name: 'Bob', age: 40 },
+        ]);
+
+        const seen = await captureMutations(() =>
+            db.table('friends').delete(1),
+        );
+
+        const byName = seen[0]![keyFor('friends', 'name')]!;
+        assert.isTrue(byName.hasKey('Alice'));
+        assert.isFalse(byName.hasKey('Bob'));
+    });
+
     test('a range delete publishes the range it cleared', async () => {
         await db.table('friends').bulkAdd([
             { name: 'a', age: 1 },

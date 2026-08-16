@@ -1,6 +1,20 @@
+import { readFileSync } from "node:fs";
 import { defineConfig } from "tsdown";
 
+const { version } = JSON.parse(
+    readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version: string };
+
 export default defineConfig({
+    // `Nexie.semVer`. Substituted here rather than hardcoded in src, so it
+    // cannot drift from the manifest, and rather than imported from
+    // package.json, which sits outside `rootDir` and would break the .d.ts
+    // emit. Running the sources directly leaves the fallback in
+    // globals/constants.ts, which reports "0.0.0-src" rather than a wrong number.
+    define: {
+        __NEXIE_VERSION__: JSON.stringify(version),
+    },
+
     // Single entry. src/index.ts is the composition root: it re-exports the
     // public surface from entry.ts and pulls database-extras and async-iterators
     // in for their side effects -- each installs proxy traps via replaceTraps.

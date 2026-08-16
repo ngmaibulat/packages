@@ -1,6 +1,8 @@
 import { isValidKey } from '../functions/cmp.ts';
 import { getByKeyPath, isArray } from '../functions/utils.ts';
 import { MAX_KEY, MIN_KEY } from '../globals/constants.ts';
+import { globalEvents } from '../globals/global-events.ts';
+import { NexiePromise } from '../zone/nexie-promise.ts';
 import { publishMutations } from './propagate-locally.ts';
 import { getSubscr } from '../zone/zone.ts';
 import {
@@ -38,12 +40,24 @@ import type { IndexableType, IndexSpec, TableSchema } from '../types/schema.ts';
  *
  * ### Precision, and where it deliberately stops
  *
- * Primary keys are exact. Secondary indexes are exact for `add`, and widened to
- * the whole index for `put`, `delete` and `deleteRange`, because knowing which
- * index entries those REMOVE would mean reading the old record first -- the job
- * of the `cacheExistingValues` middleware, which this package does not have yet.
- * The direction of that approximation is the point: a superset re-runs a query
- * that need not have re-run, while a subset leaves a view silently stale.
+ * Primary keys are always exact. Secondary indexes are exact for `add` (the new
+ * record's keys) and for `put` and `delete`, which additionally read the records
+ * they displace so the index entries being REMOVED are known too -- a query on
+ * `where('name').equals('old')` has to be woken by a rename, and the new value
+ * says nothing about the old one.
+ *
+ * That read is skipped entirely unless something is actually listening, so an
+ * application with no `liveQuery` pays nothing for it. When it is skipped, and
+ * for `deleteRange` -- where the displaced set is a whole range and reading it
+ * would mean pulling an unbounded number of records into memory to be more
+ * precise about invalidating them -- the affected indexes are widened to their
+ * full range instead. The direction of that approximation is the point: a
+ * superset re-runs a query that need not have re-run, while a subset leaves a
+ * view silently stale.
+ *
+ * Dexie splits the read into a separate `cacheExistingValues` middleware
+ * because its query cache consumes it too. There is no query cache here, so a
+ * second layer would be a protocol between two files with one caller.
  */
 
 const ALL = { from: MIN_KEY, to: MAX_KEY };
@@ -152,9 +166,33 @@ export function createObservabilityMiddleware(): Middleware<DBCore> {
                         return parts;
                     };
 
+                    /**
+                     * The primary keys a `put` or `delete` will displace, as
+                     * far as they can be known before the write.
+                     *
+                     * An insert with a generated key displaces nothing, and
+                     * says so by having no key to look up.
+                     */
+                    const displacedKeys = (
+                        request: DBCoreMutateRequest,
+                    ): IndexableType[] => {
+                        if (request.keys) return [...request.keys];
+
+                        const keyPath = schema.primKey.keyPath;
+                        if (keyPath === null) return [];
+
+                        const keys: IndexableType[] = [];
+                        for (const value of request.values ?? []) {
+                            const key = getByKeyPath(value, keyPath);
+                            if (isValidKey(key)) keys.push(key);
+                        }
+                        return keys;
+                    };
+
                     const recordMutation = (
                         request: DBCoreMutateRequest,
                         resultKeys: readonly IndexableType[],
+                        displaced: readonly any[],
                     ): void => {
                         const parts = mutatedParts(request.trans);
                         const primary = partOf(parts, keyFor(null));
@@ -171,8 +209,14 @@ export function createObservabilityMiddleware(): Middleware<DBCore> {
                             else primary.addRange(ALL.from, ALL.to);
                         }
 
+                        // An `add` cannot displace anything, so its new keys are
+                        // the whole story. A `put` or `delete` is exact only if
+                        // the records it displaced were read first.
                         const exact =
-                            request.type === 'add' && request.values !== undefined;
+                            request.type === 'add' ||
+                            ((request.type === 'put' ||
+                                request.type === 'delete') &&
+                                displaced.length > 0);
 
                         for (const index of secondaryIndexes(schema)) {
                             const part = partOf(parts, keyFor(index.name));
@@ -180,7 +224,11 @@ export function createObservabilityMiddleware(): Middleware<DBCore> {
                                 part.addRange(ALL.from, ALL.to);
                                 continue;
                             }
-                            for (const value of request.values!) {
+                            for (const value of request.values ?? []) {
+                                part.addKeys(indexKeysOf(index, value));
+                            }
+                            for (const value of displaced) {
+                                if (value === undefined) continue;
                                 part.addKeys(indexKeysOf(index, value));
                             }
                         }
@@ -190,21 +238,45 @@ export function createObservabilityMiddleware(): Middleware<DBCore> {
                         ...table,
 
                         mutate(request) {
+                            // The displacement read is worth doing only when
+                            // something is listening AND there is a secondary
+                            // index whose precision it would buy.
+                            const wantsDisplaced =
+                                globalEvents.storagemutated.hasSubscribers &&
+                                secondaryIndexes(schema).length > 0 &&
+                                (request.type === 'put' ||
+                                    request.type === 'delete');
+
+                            const keys = wantsDisplaced
+                                ? displacedKeys(request)
+                                : [];
+
+                            const before =
+                                keys.length > 0
+                                    ? table.getMany({
+                                          trans: request.trans,
+                                          keys,
+                                      })
+                                    : NexiePromise.resolve([] as any[]);
+
                             // Ask for the resulting keys even when the caller
                             // did not: `runAll` collects them regardless, so
                             // this costs nothing and is the only way to learn
                             // the key of an auto-incremented insert.
-                            return table
-                                .mutate({ ...request, wantResults: true })
-                                .then((response) => {
-                                    recordMutation(
-                                        request,
-                                        (response.results ?? []).filter(
-                                            (key) => key !== undefined,
-                                        ),
-                                    );
-                                    return response;
-                                });
+                            return before.then((displaced) =>
+                                table
+                                    .mutate({ ...request, wantResults: true })
+                                    .then((response) => {
+                                        recordMutation(
+                                            request,
+                                            (response.results ?? []).filter(
+                                                (key) => key !== undefined,
+                                            ),
+                                            displaced,
+                                        );
+                                        return response;
+                                    }),
+                            );
                         },
 
                         get(request) {

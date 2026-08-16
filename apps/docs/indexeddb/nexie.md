@@ -134,6 +134,82 @@ const data = await Nexie.waitFor(fetch("/api/friends").then((r) => r.json()));
 
 `Nexie.currentTransaction` is the transaction the calling code is inside, or `null`.
 
+If a foreign `await` does slip through, the next table call on a table that scope
+covers rejects with **`ForeignAwaitError`**, naming the fix — rather than quietly
+opening a second transaction and losing the atomicity you asked for. The check is
+narrow on purpose: it fires only when the scope is genuinely suspended on something
+this library did not create, so unrelated concurrent work is not flagged for merely
+running at the same time.
+
+`Nexie.ignoreTransaction(fn)` is the other side of it. It runs `fn` outside the
+ambient transaction, which is how bookkeeping survives a rollback of the work that
+triggered it:
+
+```ts
+await db.transaction("rw", db.friends, async () => {
+    await db.friends.add(friend);
+    // Its own transaction, so the abort below cannot take it too.
+    Nexie.ignoreTransaction(() => db.logs.add({ message: "attempted" }));
+    throw new Error("rolling back");
+});
+```
+
+`Nexie.vip(fn)` runs `fn` with the open gate lifted. `on('populate')` and
+`on('ready')` subscribers are already VIP, which is what lets them open transactions
+against a database whose own open has not finished.
+
+## Opening a database you did not declare
+
+Leave out `version().stores()` entirely and Nexie reads the schema out of the
+database instead — for tooling, migrations, or simply finding out what is in there:
+
+```ts
+const db = new Nexie("SomeoneElsesDB");
+await db.open();
+
+db.dynamicallyOpened();               // true
+db.tables.map((t) => t.name);         // whatever is actually there
+db.table("friends").schema.indexes;   // including index shapes
+await db.table("friends").toArray();  // and it is a working database
+```
+
+Opening a database that does not exist this way gives `NoSuchDatabaseError` rather
+than a silently created empty one; pass `{ allowEmptyDB: true }` when creating it is
+what you meant. The related statics are `Nexie.exists(name)`,
+`Nexie.getDatabaseNames()` and `Nexie.delete(name)`.
+
+## Options
+
+```ts
+new Nexie("MyDB", {
+    autoOpen: true,                         // open on first use (default)
+    allowEmptyDB: false,                    // see above
+    chromeTransactionDurability: "relaxed", // faster commits; Chromium reads it
+    modifyChunkSize: 200,                   // records per write-back request
+    maxConnections: 100,                    // leak-warning threshold
+    addons: [],
+    indexedDB, IDBKeyRange,                 // inject an implementation
+});
+```
+
+| | |
+|---|---|
+| `Nexie.debug = true` | Turns on the engine's own invariant assertion. Cheap; worth having on in development. |
+| `Nexie.semVer` | The library version, substituted into the bundle at build time. |
+| `Nexie.currentTransaction` | The ambient transaction, or `null`. |
+| `Nexie.waitFor(p, ms?)` | Await a foreign promise without losing the transaction. |
+| `connectionCount(name)` | How many connections this process holds to a database. |
+
+`maxConnections` is a leak detector rather than a limit: IndexedDB has no connection
+cap, and a page that keeps opening databases without closing them does not fail — it
+starts blocking its own version upgrades much later, far from the cause. Passing the
+threshold logs once per database and never throws.
+
+In a browser, a page frozen into the **bfcache** has its database closed on
+`pagehide` and reopened on `pageshow`. A browser may close those connections while
+the page sits there and then hand the page back with them apparently intact; closing
+deliberately means the state on the way out is one we chose.
+
 ## `liveQuery`
 
 A query that re-runs itself whenever its own result could have changed:
@@ -164,11 +240,14 @@ Two things worth knowing:
 - The zone rule from transactions applies here too: **await only Nexie promises
   inside a querier**, or reads after that point go unrecorded and the query stops
   re-running for them.
-- Invalidation is exact on primary keys, and exact on secondary indexes for `add`.
-  For `put`, `delete` and range deletes it widens to the whole index, because knowing
-  which index entries those *remove* would mean reading the old record first. The
-  approximation is one-directional by design: it re-runs a query that need not have
-  re-run, never the reverse.
+- Invalidation is exact on primary keys, and on secondary indexes for `add`, `put`
+  and `delete`. A `put` reads the record it displaces, so a query watching the *old*
+  value of a renamed field is woken as well as one watching the new value — that read
+  happens only while something is subscribed, so an application with no `liveQuery`
+  pays nothing for it. Range deletes are the one case still widened to the whole
+  index, since being precise there would mean reading an unbounded number of records
+  in order to invalidate them. The approximation is one-directional by design: it
+  re-runs a query that need not have re-run, never the reverse.
 
 The returned object also carries the rxjs interop key, so it can be handed to
 `from()` and used as an ordinary observable.
@@ -224,20 +303,21 @@ await db.friends.add(friend).catch("ConstraintError", handleDuplicate);
 Every error carries the Dexie `name` string, so both forms work, and
 `Nexie.errnames.Constraint === "ConstraintError"` holds.
 
-## Not implemented yet
+## Differences from Dexie
 
-Nexie is built in phases; this is the current gap list, stated so nothing has to be
-discovered by its absence:
+The API surface is complete. Two things are deliberately absent:
 
-`Nexie.vip`, `Nexie.ignoreTransaction`, `ForeignAwaitError` (a foreign `await`
-currently surfaces as `PrematureCommitError`), `Nexie.getDatabaseNames`,
-`Nexie.exists`, `maxConnections`, `chromeTransactionDurability`, `allowEmptyDB`,
-`modifyChunkSize` chunking, `Nexie.debug`, `Nexie.semVer`, `dynamicallyOpened`,
-bfcache support, and the query result cache (`cache: 'immutable' | 'cloned'`).
+- **The query result cache.** Dexie's `cache: 'immutable' | 'cloned'` holds query
+  results in memory and updates them optimistically. It is a performance layer rather
+  than a correctness one — `liveQuery` is exact without it — and it carries the
+  highest bug density per line in Dexie, so it is not here. The DBCore read path that
+  every query now goes through is the seam it would plug into.
+- **The `Dexie.Table<T, K>` namespace shim.** Import the types instead:
 
-The `Dexie.Table<T, K>` namespace shim is deliberately dropped — import the types
-instead:
+  ```ts
+  import type { Table, Collection } from "@aibulat/indexeddb/nexie";
+  ```
 
-```ts
-import type { Table, Collection } from "@aibulat/indexeddb/nexie";
-```
+And two are shaped differently rather than missing: `Nexie.vip(fn)` is a function
+rather than a property, and long-stack support is replaced by `Nexie.debug`, which
+asserts the engine's own invariant instead of rewriting stack traces.

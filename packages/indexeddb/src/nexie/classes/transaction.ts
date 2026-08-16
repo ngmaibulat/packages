@@ -39,6 +39,40 @@ export class Transaction {
     /** Set by `enterTransactionScope`; drives the PrematureCommit check. */
     explicit = false;
 
+    /** The zone an explicit scope's body runs in, and whether it has finished. */
+    _scopeZone: Zone | undefined;
+    _bodyDone = false;
+
+    /**
+     * True when the scope's body is suspended on something outside this engine
+     * — a `fetch`, a `setTimeout`, any native promise.
+     *
+     * The signal is the scope zone's own work counter: zero pending means every
+     * promise WE created has settled, and a body that has not finished by then
+     * is waiting on something we cannot see. The zone is gone for whatever it
+     * does next, and the next table call would otherwise open a second
+     * transaction with no error at all — which is what `ForeignAwaitError`
+     * exists to say out loud.
+     *
+     * Deliberately not conditioned on `active`. By the time the body comes back
+     * from a foreign await, IndexedDB has usually committed the transaction
+     * already — that is the damage, not a reason to stop reporting it.
+     *
+     * Computed on demand rather than latched by a listener on `follow`. A
+     * listener would be one more job in the drain arming one more echo with no
+     * native resume job to pair with, and the echo FIFO is only correct while
+     * that pairing stays 1:1 — it leaked a nested scope's zone into the
+     * caller's continuation, which the transaction suite caught.
+     */
+    get _zoneLost(): boolean {
+        return (
+            this.explicit &&
+            !this._bodyDone &&
+            this._scopeZone !== undefined &&
+            this._scopeZone.pending === 0
+        );
+    }
+
     idbtrans!: IDBTransaction;
 
     /** Settles when the transaction commits, rejects when it aborts. */
@@ -125,9 +159,17 @@ export class Transaction {
             return this;
         }
 
+        const durability = this.db._options.chromeTransactionDurability;
         const idb =
             idbtrans ??
-            this.db.idbdb!.transaction(this.storeNames, this.mode);
+            // The options bag is passed only when asked for: engines that do
+            // not know `durability` are required to ignore unknown members, but
+            // older ones predate the third argument entirely.
+            (durability
+                ? this.db.idbdb!.transaction(this.storeNames, this.mode, {
+                      durability,
+                  })
+                : this.db.idbdb!.transaction(this.storeNames, this.mode));
 
         this.idbtrans = idb;
         this.active = true;

@@ -6,6 +6,7 @@ import {
     type UpdateSpec,
 } from '../functions/prop-modification.ts';
 import { toLogicalKey, type ResolvedIndex } from '../dbcore/index-resolver.ts';
+import { DEFAULT_MODIFY_CHUNK_SIZE } from '../globals/constants.ts';
 import { NexiePromise } from '../zone/nexie-promise.ts';
 import type { Table } from './table.ts';
 import type { Transaction } from './transaction.ts';
@@ -651,27 +652,41 @@ export class Collection<T = any, TKey = IndexableType> {
                 }
             })
                 .then(() => {
+                    // Written in chunks rather than as one enormous request.
+                    // The walk still collects first -- writing through the
+                    // cursor would mutate the very index being iterated -- but
+                    // a single mutation carrying fifty thousand records is a
+                    // long stall in the engine, and on failure leaves a
+                    // ModifyError whose per-record failures are all the caller
+                    // has to work with.
+                    const chunk =
+                        this.db._options.modifyChunkSize ??
+                        DEFAULT_MODIFY_CHUNK_SIZE;
+
                     const operations: NexiePromise<{
                         numFailures: number;
                         failures: Record<number, unknown>;
                     }>[] = [];
 
-                    if (updates.length > 0) {
+                    for (let at = 0; at < updates.length; at += chunk) {
+                        const slice = updates.slice(at, at + chunk);
+                        const keys = updateKeys.slice(at, at + chunk);
                         operations.push(
                             table.core.mutate({
                                 type: 'put',
                                 trans,
-                                values: updates,
-                                ...(outbound ? { keys: updateKeys } : {}),
+                                values: slice,
+                                ...(outbound ? { keys } : {}),
                             }),
                         );
                     }
-                    if (deleteKeys.length > 0) {
+
+                    for (let at = 0; at < deleteKeys.length; at += chunk) {
                         operations.push(
                             table.core.mutate({
                                 type: 'delete',
                                 trans,
-                                keys: deleteKeys,
+                                keys: deleteKeys.slice(at, at + chunk),
                             }),
                         );
                     }

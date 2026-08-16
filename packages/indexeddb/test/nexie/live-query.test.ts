@@ -157,6 +157,48 @@ suite('liveQuery', () => {
         assert.lengthOf(values[1] as unknown[], 2);
     });
 
+    test('a rename wakes a query on the value that was renamed away', async () => {
+        await db.table('friends').bulkAdd([
+            { name: 'Alice', age: 30 },
+            { name: 'Bob', age: 40 },
+        ]);
+
+        const { values } = collect(() =>
+            db.table('friends').where('name').equals('Alice').toArray(),
+        );
+        await waitUntil(() => values.length === 1, 'the initial result');
+        assert.lengthOf(values[0] as unknown[], 1);
+
+        // The new record says nothing about 'Alice'; only the record it
+        // displaced does. A query watching the old value has to be woken by it.
+        await afterMutation(() =>
+            db.table('friends').update(1, { name: 'Alicia' }),
+        );
+        await waitUntil(() => values.length === 2, 'the re-run');
+        assert.lengthOf(values[1] as unknown[], 0);
+    });
+
+    test('a write to an unrelated index key still does not wake it', async () => {
+        await db.table('friends').bulkAdd([
+            { name: 'Alice', age: 30 },
+            { name: 'Bob', age: 40 },
+        ]);
+
+        let runs = 0;
+        const { values } = collect(() => {
+            runs++;
+            return db.table('friends').where('name').equals('Alice').toArray();
+        });
+        await waitUntil(() => values.length === 1, 'the initial result');
+
+        // Precision cuts both ways: knowing the displaced key is what keeps
+        // this from widening to the whole index.
+        await afterMutation(() =>
+            db.table('friends').update(2, { name: 'Bobby' }),
+        );
+        assert.equal(runs, 1);
+    });
+
     test('unsubscribe stops delivery', async () => {
         let runs = 0;
         const { values, subscription } = collect(() => {

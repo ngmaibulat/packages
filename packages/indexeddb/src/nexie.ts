@@ -38,6 +38,15 @@ export {
 export { liveQuery } from './nexie/live-query/live-query.ts';
 export { globalEvents } from './nexie/globals/global-events.ts';
 export {
+    DEFAULT_MAX_CONNECTIONS,
+    DEFAULT_MODIFY_CHUNK_SIZE,
+    MAX_KEY,
+    MAX_STRING,
+    MIN_KEY,
+    PRIMARY_KEY_NAME,
+} from './nexie/globals/constants.ts';
+export { connectionCount } from './nexie/globals/connections.ts';
+export {
     PropModification,
     add,
     remove,
