@@ -1,3 +1,89 @@
+# Unreleased — spec conformance at the edges, and two quadratic paths
+
+A code review against the IndexedDB spec. None of these moved a conformance
+expectation — the corpus was already green where it could be — but each is a
+place where the implementation and a browser disagreed on an error, an order,
+or a cost. `test/unit/conformance-fixes.test.ts` carries one test per item, and
+the totals are 1,792 tests, identical under `node --test` and `bun test`.
+
+## Behaviour
+
+- **`SyntaxError` carries its own message.** The default was the `VersionError`
+  text; `messages.SyntaxError` existed and was never read.
+- **`null` values are rejected as `DataError`**, not a raw `TypeError` (or,
+  worse, accepted and failed later). `canInjectKey` and `storeRecord` treated
+  `null` as an object.
+- **`SharedArrayBuffer` and typed-array views over one are valid keys.** They
+  were accepted by `valueToKey` and then unknown to `cmp`, which threw
+  `DataError` from inside the abort rollback — outside any try/catch, so it
+  killed the process. `valueToKey` now copies the bytes into a fresh
+  `ArrayBuffer`; the detached check reads the view's buffer rather than the
+  view (zero-length views were being rejected as detached).
+- **Abort rollback is guarded.** A throw while undoing the log becomes the
+  transaction's error instead of an uncaught exception; the log is walked on a
+  copy rather than reversed in place; and aborting an upgrade transaction
+  reverts only the connection that owns it — `_rawDatabase` is shared, and it
+  was emptying every open connection.
+- **`addEventListener` dedupes** on (type, callback, capture), as
+  `EventTarget` requires. The same listener registered twice fired twice.
+- **`Event.defaultPrevented` is a real getter** over the cancelled flag. It was
+  always `false`, so a wrapper reading it after `preventDefault()` — the
+  low-level `@aibulat/indexeddb` does exactly that — could not tell.
+- `IDBIndex.get()`/`getKey()` with no argument is a `TypeError`, not
+  `DataError`.
+- An invalid `IDBCursorDirection` is a `TypeError` in `openCursor`,
+  `openKeyCursor`, `getAll`/`getAllKeys` options and `getAllRecords`. It was
+  silently accepted.
+- `add`/`put` validate the key **before** cloning the value, so a bad key with
+  an uncloneable value reports `DataError` as the spec orders, not
+  `DataCloneError`.
+- `IDBRequest.error` is `null` after success, per the IDL, not `undefined`.
+- `multiEntry` index keys are deduplicated by key comparison rather than
+  identity, so `[[1], [1]]` stores one entry.
+- `validateRequiredArguments` reports the number actually passed.
+
+## Performance
+
+- **Cursor iteration over an explicit key range was O(n²).** `makeKeyRange`
+  kept the *smaller* lower bound and the *larger* upper bound when combining
+  the cursor's position with the caller's range, so every `continue()` rescanned
+  from the start of the range. It now takes the tighter of each, and returns an
+  empty range when they cross. Walking 4,000 records inside a bound range took
+  3.2 s where the unbounded walk took 74 ms; it is 79 ms now.
+- **Deleting a record with any index on the store was O(n²).**
+  `RecordStore.deleteByValue` full-scanned the index for the primary key on
+  every delete or overwrite. Indexes now compute the record's own index keys
+  and delete by `(indexKey, primaryKey)`, a range lookup. Deleting 2,000
+  records from a store with one index took 1.27 s, against 34 ms with no
+  index; it is 40 ms now. Throughput guards for both live next to the existing
+  `count()` one.
+- `Index.getAllRecords` no longer clones each value twice; the scheduler is
+  resolved once at module load rather than per task; `enforceRange` returns a
+  number.
+
+## Types and packaging
+
+- **`types.d.ts` declares `installGlobals`** — the fork's headline addition
+  had no type — and `forceCloseDatabase` takes an `IDBDatabase` instance
+  rather than the constructor.
+- `setErrorCode` is gone: the error classes are real `DOMException` subclasses,
+  and the own enumerable `code` it added to four of them made
+  `Object.keys(new DataError())` answer `['code']`.
+
+## Test harness
+
+- The WPT runner's `expectedTests` manifest key registers a fixed set of
+  assertion names for a file that may time out, so a child that dies before
+  printing cannot change the totals — the "identical on both runtimes" signal
+  no longer has a legitimate reason to differ on the `UNSTABLE` file. A
+  duplicate result is a verdict now rather than a `throw` that aborted the
+  whole loop, and the dead `WRITE_TO_README` block (wrong path, null
+  dereference, markers that did not exist) is deleted.
+- `smoke.test.ts` calls `installGlobals()` rather than re-importing `auto`,
+  the pattern the README warns about; `auto.test.ts` restores the source
+  classes on `globalThis` in a `finally`, so under Bun's shared process it no
+  longer leaves the `dist/` classes installed for the next file.
+
 # 0.1.2 — transactions deactivate, and the IDL is honoured
 
 Behavioural changes, so worth reading even though the API is unchanged. All of

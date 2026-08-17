@@ -1,3 +1,95 @@
+# Unreleased — a full review of both APIs
+
+A code review of both entries against real Dexie 4.4.4 and against the IndexedDB spec, with
+every finding reproduced by running the sources before it was fixed. Nexie takes almost all of
+the changes; the low-level API changes in one function and its types. The suite grows from 428
+to 485 tests, and both runtimes report the same total.
+
+**`dist/index.js` changed for the first time since 0.1.2** — deliberately, for the
+`ignoreConstraints` fix below — so the byte-identity that the 0.1.2, 0.1.3 and 0.1.5 notes claim
+now holds against the new digest. That claim is enforced from this release on:
+`scripts/postbuild.mjs` runs from tsdown's `onSuccess`, hashes `dist/index.js` against the
+committed `low-level-bundle.sha256`, and fails the build on a mismatch, on a `dist/chunks/`
+directory (which would mean the two entries had started sharing code), or on a `dist/nexie.js`
+whose `Nexie.semVer` was not substituted. `UPDATE_BUNDLE_DIGEST=1 pnpm run build` re-records the
+digest when a change to the low-level bundle is intended. The version-string check that used to
+live in `test/statics.test.ts` — and went red after every `pnpm bump` until a rebuild — moved
+into the same script.
+
+## Nexie — correctness
+
+Bugs that lost data or hung, in the order they mattered:
+
+- **A rejection nobody handled inside a scope now fails the scope.** A fire-and-forget write in
+  an `on('populate')` subscriber, a `version().upgrade()` callback or a non-async transaction
+  body that hit a `ConstraintError` was silently dropped: the transaction committed everything
+  else and `open()` resolved. `NexiePromise` now tracks whether a rejection was observed by the
+  end of the tick; inside a `follow()` scope an unobserved one is routed to the scope's sink and
+  aborts it with that error, as Dexie does. Outside any scope it is reported like a native one —
+  a `PromiseRejectionEvent('unhandledrejection')` where the host has one, otherwise
+  `console.error` — through the overridable `NexiePromise.onUnhandled`. Reading `then` marks a
+  promise handled, so an `await` a microtask later never trips it.
+- **The zone work counter is exact.** A child zone charged its parent once but paid it back on
+  every idle crossing, driving the parent negative after one nested scope. Downstream that made
+  `_zoneLost` unreachable (a lost scope surfaced as `PrematureCommitError` instead of
+  `ForeignAwaitError`) and left `follow()` unable to be woken. `retain`/`release` now charge the
+  parent when the child goes idle → busy and pay it back once when it goes idle again.
+- **`liveQuery` querier and observer run in the global zone.** They were parented on the zone of
+  the transaction whose commit triggered them, so inside `next` `Nexie.currentTransaction` was a
+  completed transaction and any table call threw `TransactionInactiveError`. `subscribe()` called
+  inside a scope had the same problem. Both run in the root zone now, as do
+  `globalEvents.storagemutated` listeners.
+- **Two overlapping `Nexie.waitFor()` calls no longer hang the transaction.** The keep-alive spin
+  stopped when *either* wait settled, stranding the other in the queue forever. It now counts
+  outstanding waits and re-arms until the last one is done.
+- **Changing a table's primary key across versions is refused** with
+  `UpgradeError('Not yet support for changing primary key (table X: ++id -> uuid). Drop the
+  table and recreate it in a new version instead.')`. It was silently accepted, leaving the store
+  on the old key path and the schema on the new one.
+- **Hooks, `mapToClass` and read hooks survive a later `db.version(n).stores()`.** Re-parsing the
+  schema dropped them, so `hook('creating')` registered before a version declaration never fired.
+- **`distinct()` is reusable.** Its dedupe set was built once at clone time; a second `toArray()`
+  returned `[]` and `first()` followed by `toArray()` dropped a record.
+- **`modify` honours `delete ref.value`** — the documented idiom raised `ModifyError`; only
+  `ref.value = null` deleted.
+- **`NexiePromise.any([])` rejects** with an `AggregateError` instead of never settling.
+- **`where({...})` on an unindexed field compares by key equality**, so `Date`, array and binary
+  criteria match. They were compared with `===`.
+- The bfcache `pagehide`/`pageshow` listeners are removed when the last connection closes;
+  every `new Nexie()` — including `Nexie.delete(name)` — leaked a pair.
+
+## Nexie — Dexie parity
+
+- `on('ready')`: a subscriber added when the database is already open fires at once; non-sticky
+  subscribers fire once rather than on every reopen; the `bSticky` argument is honoured.
+- Nested `'rw'` inside `'r'` is a `SubTransactionError` (it was `ReadOnlyError`; the name is
+  API), as is a nested scope naming a table the parent did not include. `'?'` modes treat an
+  inactive parent as absent. The four `!`/`?` modes have tests now.
+- `Transaction` has `on('complete' | 'error' | 'abort')`.
+- Added `EntityTable`, `InsertType`, `IDType`, `NonInsertProps`, the `TInsertType` parameter on
+  `Table`, `Table.get(criteria)` and `Table.defineClass()`.
+- `db.delete()` fires `on('blocked')`.
+- `until()` sees mapped values, like `filter()`.
+- A rejection adopted from a foreign thenable goes through the rejection mapper, so
+  `instanceof Nexie.ConstraintError` holds for it.
+- `isValidKey` rejects `NaN` and invalid `Date`s; `add()`/`remove()` modifiers follow Dexie
+  exactly (arrays are concatenated/filtered and sorted, numbers are coerced, anything else is a
+  `TypeError`). `add('x')` on an array field is no longer accepted — pass `add(['x'])`.
+
+## Low-level API
+
+- **`ignoreConstraints` removes its listener once the request settles**, and throws a `TypeError`
+  when called after the request has already failed — before, it silently reported `undefined` for
+  a write that had already aborted the transaction. This is the change to `dist/index.js`.
+- `getAllRecords` is omitted from the wrapped store and index types, ahead of `lib.dom`
+  declaring it (Chrome 141 ships it); without the `Omit` the package would stop compiling for
+  consumers the day it lands.
+- `"sideEffects": true` is declared in `package.json` rather than only implied by a comment.
+- New tests: the exported type surface (`test/types.test.ts`), `durability`, `terminated`,
+  `preventDefault()` on its own, and the `ignoreConstraints` rules above.
+- README: `tx.done`'s synthetic `AbortError` message is documented, `ignoreConstraints` has its
+  two rules spelled out, and the TypeScript section shows the cross-file schema types.
+
 # 0.1.5 — the two APIs are documented as two APIs
 
 No code changes: `dist/index.js` and `dist/nexie.js` are byte-identical to 0.1.4.

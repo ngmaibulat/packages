@@ -15,7 +15,7 @@ A **pnpm workspace** (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `examples/*
 - `packages/json` → `@aibulat/json`, `readJson<T>()` over `isfile`.
 - `packages/indexeddb` → `@aibulat/indexeddb`, a promise wrapper over IndexedDB. **Its tests run against the sibling `@aibulat/indexeddb-impl`, which must be built first** — the exports map resolves into that package's gitignored `dist/`, so on a fresh checkout `pnpm --filter @aibulat/indexeddb run test` fails until a build has run. That is the same `linkWorkspacePackages` trap as **Build order** below, extended from `typecheck` to `test`; CI and `release.ts` already build first, so only local runs are affected. Forked from [`idb`](https://github.com/jakearchibald/idb) at v8.0.3 and maintained as an **API-compatible superset** — everything idb does behaves identically, plus fixes and additions upstream never shipped (see its CHANGELOG for the list and the upstream issue numbers). A browser library with no `bin`; like `restclients` it builds `platform: "neutral"` and must stay browser-safe. **The only package whose tests need an IndexedDB implementation** — they run on `fake-indexeddb` under `node:test`, not in a browser. Its tsconfig `lib` includes `ESNext.Disposable` for `Symbol.dispose`; consumers do **not** need it, because `entry.ts` keys that member off a type that collapses to `never` when the lib is absent. Do not "simplify" that to a plain `[Symbol.dispose]()` — it would break consumers on a narrower `lib`, which is upstream's `WeakKey` bug (#331). **It has a second entry, `./nexie`** — see **Nexie** below.
 - `packages/fs` → `@aibulat/fs`, filesystem helpers plus an `fs` bin. The only package with a native compile (`posix`) and a WASM dep (`@npcz/magic`).
-- `packages/indexeddb-impl` → `@aibulat/indexeddb-impl`, a pure-JS in-memory implementation of IndexedDB. Forked from [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB) at v6.2.5 (no history grafted), API unchanged apart from an added `installGlobals()`. **Apache-2.0, not MIT** — it is the one package with a `NOTICE`, which the licence requires; keep both in the published `files`. Like `restclients` and `indexeddb` it builds `platform: "neutral"` and must stay browser-safe. Its four test suites (WPT conformance, the QUnit corpus, unit, smoke — 1,774 tests) all run headless, and **the same suites must pass under both `node --test` and `bun test`** with identical totals; `test:bun` is what proves the second half. See **The two runtimes** below.
+- `packages/indexeddb-impl` → `@aibulat/indexeddb-impl`, a pure-JS in-memory implementation of IndexedDB. Forked from [`fake-indexeddb`](https://github.com/dumbmatter/fakeIndexedDB) at v6.2.5 (no history grafted), API unchanged apart from an added `installGlobals()`. **Apache-2.0, not MIT** — it is the one package with a `NOTICE`, which the licence requires; keep both in the published `files`. Like `restclients` and `indexeddb` it builds `platform: "neutral"` and must stay browser-safe. Its four test suites (WPT conformance, the QUnit corpus, unit, smoke — 1,792 tests) all run headless, and **the same suites must pass under both `node --test` and `bun test`** with identical totals; `test:bun` is what proves the second half. See **The two runtimes** below.
 - `packages/mark` → `@aibulat/mark`, a terminal Markdown renderer (`bin`: `mark`).
 - `packages/mk-swagger-ui` → **`mk-swagger-ui`**, a static OpenAPI reference generator, rendering with **Scalar** despite the name (`bin`: `mk-swagger-ui`). One of the two members published without the `@aibulat` scope — see **The unscoped members** below.
 - `packages/sendeml` → `@aibulat/sendeml`, sends raw `.eml` files to SMTP, including Haraka queue dirs (`bin`: `sendeml`). Mid-restructure — see below.
@@ -276,10 +276,14 @@ Four things are load-bearing:
   `promisifyRequest` in `wrap-idb-value.ts` returns a **native** promise, and
   `await` on one of those never reads `.then`, so the transaction zone would die on
   every request. The bonus is that tsdown's unconditional splitting emits no shared
-  chunk, which keeps `dist/index.js` byte-identical. **Verify it, do not assume it:**
-  after any change, `md5sum dist/index.js` against the previous build and check that
-  `dist/chunks/` does not exist. `src/nexie/dbcore/request.ts` duplicates ~30 lines
-  of request promisification on purpose.
+  chunk, which keeps `dist/index.js` byte-identical. **The build enforces it:**
+  `scripts/postbuild.mjs` (run from tsdown's `onSuccess` via `execFileSync`) hashes
+  `dist/index.js` against the committed `low-level-bundle.sha256`, fails on a
+  `dist/chunks/` directory, and fails if `dist/nexie.js` still carries `0.0.0-src`.
+  A deliberate change to the low-level bundle is re-recorded with
+  `UPDATE_BUNDLE_DIGEST=1 pnpm run build` and noted in the CHANGELOG; an accidental
+  one is a red build that names the cause. `src/nexie/dbcore/request.ts` duplicates
+  ~30 lines of request promisification on purpose.
 - **The zone is the crux.** `src/nexie/zone/` carries "which transaction am I in"
   across `await` using two complementary mechanisms — an echo FIFO and `then` as a
   **getter** that captures the zone synchronously at the await point. Neither works
@@ -316,6 +320,24 @@ Two more things that are load-bearing, both found by tests rather than reasoning
   resume jobs. A listener whose job enqueues no resume job hands its zone to whatever
   runs next — a nested scope's zone leaked into the caller's continuation exactly
   this way. `Transaction._zoneLost` is computed on demand for that reason.
+- **The zone work counter is exact, and `newZone` never pre-charges the parent.**
+  `retain` charges the parent once when a child goes idle → busy; the child's
+  `finalize` (installed by `newZone`) pays it back once when it goes idle again. The
+  earlier design charged up front and paid back on every zero-crossing, which drove
+  the parent negative after one nested scope and made `_zoneLost` (`pending === 0`)
+  unreachable. Anything that touches `pending` must keep the two sides balanced.
+- **An unhandled rejection has a sink, and it is the nearest `follow`.**
+  `NexiePromise` marks itself handled when `then` is *read* (an `await` reads it
+  synchronously and calls it a microtask later, past the end-of-tick check) and
+  reports at end of tick otherwise: to `zone.onunhandled` walking up the chain —
+  `follow()` installs one so a fire-and-forget failure inside a scope, populate or
+  upgrade rejects the whole thing, as in Dexie — else to `NexiePromise.onUnhandled`,
+  which dispatches `unhandledrejection` or `console.error`s. A test that expects a
+  rejection to be swallowed is wrong; override `NexiePromise.onUnhandled` to capture.
+- **`liveQuery` queriers, observers and `globalEvents` listeners run in the root
+  zone.** They are triggered from a committing transaction's `_completion`, and
+  parenting them on that zone made `Nexie.currentTransaction` a dead transaction
+  inside `next`. `runInZone(rootZone, …)` at both sites is what prevents it.
 - **A derived promise belongs to the zone `then` was read in, not the ambient one.**
   `_thenIn` is called a microtask later from `PromiseResolveThenableJob`, where the
   ambient zone is the echo front — some unrelated scope. Creating the derived promise

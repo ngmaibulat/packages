@@ -45,6 +45,7 @@ The two module graphs are **disjoint**: nothing in the Nexie graph imports the l
    1. [Options](#options)
    1. [`liveQuery`](#livequery)
    1. [Hooks, events and middleware](#hooks-events-and-middleware)
+   1. [Typing tables](#typing-tables)
    1. [Errors](#errors)
    1. [Differences from Dexie](#differences-from-dexie)
 1. [Developing](#developing)
@@ -300,7 +301,7 @@ await Promise.all([
 
 If you're writing to the database, `tx.done` is the signal that everything was successfully committed to the database. However, it's still beneficial to await the individual operations, as you'll see the error that caused the transaction to fail.
 
-`tx.done` rejects with the error that actually caused the failure — a `ConstraintError` for a duplicate key, a `QuotaExceededError` when storage is full — rather than a generic `AbortError`. Only an abort with no other cause, such as an explicit `tx.abort()`, gives you an `AbortError`.
+`tx.done` rejects with the error that actually caused the failure — a `ConstraintError` for a duplicate key, a `QuotaExceededError` when storage is full — rather than a generic `AbortError`. Only an abort with no other cause, such as an explicit `tx.abort()`, gives you an `AbortError`. That one is synthesised here rather than read off the transaction (which has no error to read), and its message is `A request was aborted.` — the same name idb uses, not the same message, so match on `name`, not on text.
 
 You don't have to await `tx.done`. For a read there's often no reason to, and a transaction that fails unobserved won't produce an unhandled rejection.
 
@@ -405,6 +406,13 @@ await tx.done;
 ```
 
 Any other error still rejects, and still aborts the transaction.
+
+Two rules, both enforced with a `TypeError` rather than silently doing the wrong thing:
+
+- **Call it in the same turn as the write**, before awaiting anything. The suppression is a listener on the request's `error` event, and once that event has fired the `ConstraintError` has already reached the transaction and aborted it — swallowing it from the promise at that point would report a clean `undefined` for a write that took the whole transaction down.
+- **Pass the promise of a store or index write** — `tx.store.add(...)`, `index.put(...)` and so on. The `db.add()` / `db.put()` shortcuts open and close a transaction of their own, and by the time you hold their promise there is no request left to attach to.
+
+The listener is removed once the request settles, so a request object that outlives the operation — a cursor's, say — is not left with a constraint-swallowing listener on whatever it does next.
 
 ## Closing with `using`
 
@@ -564,6 +572,35 @@ Optionally, `indexes` can contain a map of index names, to the type of key withi
 
 Provide this interface when calling `openDB`, and from then on your database will be strongly typed. This also allows your IDE to autocomplete the names of stores and indexes.
 
+### Assembling a schema across files
+
+Every piece of the above is exported as a named type, so a schema, a migration or a set of callbacks can live in its own module and still be checked against the database:
+
+```ts
+import type {
+  DBSchema, DBSchemaValue, IndexKeys,        // the schema and its parts
+  StoreNames, StoreKey, StoreValue,          // resolve names/keys/values against a schema
+  IndexNames, IndexKey,                      // the same for a store's indexes
+  OpenDBUpgradeCallback, OpenDBBlockedCallback,
+  OpenDBBlockingCallback, OpenDBTerminatedCallback,
+  DeleteDBBlockedCallback, DeleteDBCallbacks,
+  IDBTransactionOptions,                     // { durability?: 'default' | 'strict' | 'relaxed' }
+  IDBPStoreGetAllOptions, IDBPIndexGetAllOptions,
+} from '@aibulat/indexeddb';
+
+// migrations.ts
+export const upgrade: OpenDBUpgradeCallback<MyDB> = (db, oldVersion, newVersion, tx) => {
+  if (oldVersion < 1) db.createObjectStore('favourite-number');
+  // `tx` is typed as the versionchange transaction over every store in MyDB.
+};
+
+// main.ts
+const db = await openDB<MyDB>('my-db', 1, { upgrade, terminated() { reconnect(); } });
+const tx = db.transaction('products', 'readwrite', { durability: 'relaxed' } satisfies IDBTransactionOptions);
+```
+
+`test/types.test.ts` is the compile-time contract for that surface: it asserts each name exists and composes as shown, and it fails `typecheck` — not `test` — if one drifts.
+
 ### Opting out of types
 
 If you call `openDB` without providing types, your database will use basic types. However, sometimes you'll need to interact with stores that aren't in your schema, perhaps during upgrades. In that case you can cast.
@@ -713,7 +750,8 @@ await db.friends.where('age').above(65).modify({ retired: true });
 ```ts
 import { add, remove, replacePrefix } from '@aibulat/indexeddb/nexie';
 
-await db.friends.update(1, { age: add(1), tags: remove('new') });
+await db.friends.update(1, { age: add(1), tags: remove(['new']) });
+// `add`/`remove` take a number (or bigint) for numeric fields and an array for array fields.
 ```
 
 ## Transactions
@@ -743,6 +781,16 @@ Nexie.ignoreTransaction() if this call is genuinely unrelated to it.
 ```
 
 `Nexie.ignoreTransaction(fn)` is the other side of that: it runs `fn` outside the ambient transaction, so bookkeeping that must survive a rollback of the work that triggered it gets a transaction of its own.
+
+Nested scopes join the enclosing transaction when they can. A `'rw'` scope inside an `'r'` one is a `SubTransactionError`, as is a nested scope naming a table the parent did not include; the Dexie modifiers work as documented — `'rw!'` always opens a fresh top-level transaction, `'rw?'` joins the parent when it is still active and otherwise opens its own.
+
+The `Transaction` object (`Nexie.currentTransaction`, or the argument to a scope) carries `on('complete')`, `on('error')` and `on('abort')`, and `Nexie.waitFor()` may be outstanding more than once at a time.
+
+### Unhandled rejections inside a scope
+
+An operation started inside a transaction scope, an `on('populate')` subscriber or a `version().upgrade()` callback and never awaited still counts. If it rejects and nothing handles it by the end of the tick, the enclosing scope fails with that error — the transaction aborts, `open()` rejects — the way it does in Dexie, so a fire-and-forget write that hits a `ConstraintError` cannot leave you with a partially committed transaction that reported success.
+
+Outside any scope, an unhandled Nexie promise rejection is reported the way a native one is: as an `unhandledrejection` event where the host has `PromiseRejectionEvent` (browsers), otherwise through `console.error`. Set `NexiePromise.onUnhandled` to route those somewhere else.
 
 ## Opening a database you did not declare
 
@@ -817,7 +865,8 @@ Database events cover the lifecycle:
 ```ts
 db.on('populate', () => db.friends.bulkAdd(seedData));
 db.on('blocked', () => console.warn('another tab is holding the old version'));
-db.on('ready', () => console.log('open and usable'));
+db.on('ready', () => console.log('open and usable'));          // fires once, or at once if already open
+db.on('ready', () => console.log('every open'), true);          // sticky: fires on every (re)open
 db.on('versionchange', () => db.close());
 db.on('close', () => console.log('connection gone'));
 ```
@@ -843,7 +892,27 @@ db.use({
 });
 ```
 
-`mutate`, `get`, `getMany`, `count`, `query` and `openCursor` are all interceptable. `mapToClass`, the `Entity` base class and `Nexie.addons` are present too.
+`mutate`, `get`, `getMany`, `count`, `query` and `openCursor` are all interceptable. `mapToClass`, `defineClass`, the `Entity` base class and `Nexie.addons` are present too, and hooks and class mappings survive a later `db.version(n).stores()` declaration.
+
+## Typing tables
+
+`Table<T, TKey, TInsertType>` takes the same three parameters as Dexie's, and `EntityTable` derives the key and insert types from the entity so an auto-incremented `id` need not be optional on the way in:
+
+```ts
+import { Nexie, type EntityTable } from '@aibulat/indexeddb/nexie';
+
+interface Friend { id: number; name: string; age: number }
+
+const db = new Nexie('friends') as Nexie & {
+    friends: EntityTable<Friend, 'id'>;      // key: number, insert type: Omit<Friend, 'id'>
+};
+db.version(1).stores({ friends: '++id, name, age' });
+
+await db.friends.add({ name: 'Alice', age: 30 });   // no id required
+const alice = await db.friends.get({ name: 'Alice' }); // criteria form of get()
+```
+
+`InsertType`, `IDType` and `NonInsertProps` are exported alongside for building your own.
 
 ## Errors
 
@@ -870,6 +939,8 @@ The API surface is complete, with two deliberate exceptions:
 
 Two things are shaped differently rather than missing: `Nexie.vip(fn)` is a function rather than a property, and long-stack support is replaced by `Nexie.debug`, which asserts the engine's own invariant instead of rewriting stack traces.
 
+Two things are stricter than Dexie, on purpose: awaiting a foreign promise inside a scope is a `ForeignAwaitError` rather than a silently opened second transaction, and an unhandled rejection outside any scope is reported (see [Transactions](#transactions)) rather than dropped.
+
 # Developing
 
 This package lives in the [`@aibulat/packages`](https://github.com/ngmaibulat/packages) workspace. From the package directory:
@@ -882,7 +953,7 @@ pnpm run test        # node:test against @aibulat/indexeddb-impl
 pnpm run test:bun    # the same suite under Bun, and the totals must match
 ```
 
-The suite is 428 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Some of the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
+The suite is 485 tests over `node:test`, run against the sibling [`@aibulat/indexeddb-impl`](../indexeddb-impl) rather than a real browser, so it needs no web server and runs in CI. That package has to be **built** first — the exports map resolves into its `dist/`, and a fresh checkout has none. Some of the assertions are compile-time `typeAssert<IsExact<…>>` checks from `conditional-type-checks`; those fail `typecheck`, not `test`.
 
 It must report **identical totals under Node and Bun**. That is not ceremony: Nexie's transaction zone rests on the normative ordering of `Await` and promise-resolve-thenable jobs, and Bun is JSC where Node is V8. A divergence there is a bug in the design rather than a runtime quirk, which is why there are no per-runtime expectations to absorb one.
 

@@ -158,6 +158,23 @@ await db.transaction("rw", db.friends, async () => {
 `on('ready')` subscribers are already VIP, which is what lets them open transactions
 against a database whose own open has not finished.
 
+Nested scopes join the enclosing transaction when they can. A `'rw'` scope inside an
+`'r'` one is a `SubTransactionError`, as is a nested scope naming a table the parent
+did not include; `'rw!'` always opens a fresh transaction and `'rw?'` joins the parent
+only while it is still active. The transaction object carries
+`on('complete' | 'error' | 'abort')`.
+
+::: tip A rejection nobody handles fails the scope
+An operation started inside a transaction scope, an `on('populate')` subscriber or a
+`version().upgrade()` callback and never awaited still counts. If it rejects and
+nothing handles it by the end of the tick, the scope fails with that error — the
+transaction aborts, `open()` rejects — so a fire-and-forget write that hits a
+`ConstraintError` cannot leave a partially committed transaction that reported
+success. Outside any scope such a rejection is reported like a native one
+(`unhandledrejection` where the host has it, otherwise `console.error`), through the
+overridable `NexiePromise.onUnhandled`.
+:::
+
 ## Opening a database you did not declare
 
 Leave out `version().stores()` entirely and Nexie reads the schema out of the
@@ -288,6 +305,14 @@ db.use({
 
 `mutate`, `get`, `getMany`, `count`, `query` and `openCursor` are all interceptable.
 
+`db.on('ready', fn)` fires once — at once if the database is already open — and
+`db.on('ready', fn, true)` is sticky, firing on every reopen. Hooks and `mapToClass`
+survive a later `db.version(n).stores()` declaration.
+
+`Table<T, TKey, TInsertType>` and `EntityTable<T, 'id'>` type tables the way Dexie's
+do, so an auto-incremented key need not be optional on insert; `Table.get(criteria)`
+and `defineClass()` are there too.
+
 ## Errors
 
 ```ts
@@ -321,3 +346,7 @@ The API surface is complete. Two things are deliberately absent:
 And two are shaped differently rather than missing: `Nexie.vip(fn)` is a function
 rather than a property, and long-stack support is replaced by `Nexie.debug`, which
 asserts the engine's own invariant instead of rewriting stack traces.
+
+Two things are stricter than Dexie, on purpose: awaiting a foreign promise inside a
+scope is a `ForeignAwaitError` rather than a silently opened second transaction, and
+an unhandled rejection outside any scope is reported rather than dropped.

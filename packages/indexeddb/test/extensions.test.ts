@@ -366,12 +366,14 @@ suite('ignoreConstraints', () => {
     const tx = db.transaction('books', 'readwrite');
     const operation = tx.store.add({ id: 4, title: 'Book D', author: 'D' });
     const request = unwrap(operation);
-    // The impl keeps its listeners in a list, so count them.
+    // The impl keeps its listeners in a list, so count them. Before settling
+    // there are the wrapper's own two plus the two ignoreConstraints adds;
+    // both pairs are removed on settle, so nothing at all should remain.
     const listeners = (request as unknown as { _listeners: unknown[] })._listeners;
-    const before = listeners.length;
+    assert.isAbove(listeners.length, 0, 'listeners attached before settle');
     await ignoreConstraints(operation);
     await tx.done;
-    assert.strictEqual(listeners.length, before, 'listeners removed on settle');
+    assert.strictEqual(listeners.length, 0, 'listeners removed on settle');
   });
 
   test('is scoped to the one operation, not the whole transaction', async () => {

@@ -102,7 +102,8 @@ Use `iterateKeys()` when you only need keys and would rather not read every valu
 const newest = await db.getAll("articles", { direction: "prev", count: 10 });
 const records = await db.getAllRecords("articles");   // { key, primaryKey, value }
 
-// Skip duplicates without losing the rest of the batch.
+// Skip duplicates without losing the rest of the batch. Call it in the same
+// turn as the write, on a store or index request (not a db.* shortcut).
 const tx = db.transaction("articles", "readwrite");
 await Promise.all(articles.map((a) => ignoreConstraints(tx.store.add(a))));
 await tx.done;

@@ -12,6 +12,7 @@ import type {
   IDBPStoreGetAllOptions,
   IDBPTransaction,
   IDBTransactionOptions,
+  IndexKey,
   IndexKeys,
   IndexNames,
   OpenDBBlockedCallback,
@@ -55,7 +56,10 @@ typeAssert<IsExact<StoreValue<TestDB, 'settings'>, string>>(true);
 typeAssert<IsExact<IndexNames<TestDB, 'books'>, 'by_author' | 'by_title'>>(
   true,
 );
-typeAssert<IsExact<IndexKeys<TestDB, 'books', 'by_author'>, string>>(true);
+typeAssert<IsExact<IndexKey<TestDB, 'books', 'by_author'>, string>>(true);
+// `IndexKeys` is the map itself, the shape a store's `indexes` member takes.
+const bookIndexes: IndexKeys = {} as TestDB['books']['indexes'];
+typeAssert<IsExact<typeof bookIndexes, IndexKeys>>(true);
 // A store without indexes has no index names.
 typeAssert<IsExact<IndexNames<TestDB, 'settings'>, never>>(true);
 

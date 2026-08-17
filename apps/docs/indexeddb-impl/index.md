@@ -69,14 +69,15 @@ means it cannot reinstall after a test has replaced or deleted the globals.
 |---|---|
 | Storage | In memory, for the life of the process. Nothing is written to disk and there is nothing to clean up. |
 | Scheduling | Tasks are queued with `setImmediate` where it exists, because IndexedDB requires a transaction to go inactive when the event loop turns. A microtask would run database operations too early. |
-| Runtimes | Node >= 22.5 and Bun. Built `platform: "neutral"`, so it also runs in a browser or a worker. |
-| Conformance | 1,369 of the W3C web-platform-tests IndexedDB tests pass. |
+| Runtimes | Node >= 26 and Bun >= 1.3. Built `platform: "neutral"`, so it also runs in a browser or a worker. |
+| Conformance | 1,536 of the W3C web-platform-tests IndexedDB tests pass; 3 are recorded as known failures. |
 
 ## Gotchas
 
-- **It is not a browser.** 144 conformance tests are recorded as known failures —
-  blob storage, some structured-clone corners, a few transaction-scheduling
-  edges. The authoritative list is `test/wpt/manifests/` in the repository.
+- **It is not a browser.** Three conformance tests are recorded as known failures —
+  one microtask-between-listeners timing that an event-loop emulation cannot
+  express, one that needs a proxy detector, one that needs a browsing context to
+  tear down. The authoritative list is `test/wpt/manifests/` in the repository.
 - **State persists across tests in one process.** Databases live in the module,
   so under a shared-process runner one test's database is visible to the next.
   Delete what you create, or use a unique database name per test.
