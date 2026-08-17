@@ -1,4 +1,4 @@
-# Unreleased — a full review of both APIs
+# 0.1.6 — a full review of both APIs
 
 A code review of both entries against real Dexie 4.4.4 and against the IndexedDB spec, with
 every finding reproduced by running the sources before it was fixed. Nexie takes almost all of

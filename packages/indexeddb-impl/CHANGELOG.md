@@ -4,9 +4,26 @@ A code review against the IndexedDB spec. None of these moved a conformance
 expectation — the corpus was already green where it could be — but each is a
 place where the implementation and a browser disagreed on an error, an order,
 or a cost. `test/unit/conformance-fixes.test.ts` carries one test per item, and
-the totals are 1,792 tests, identical under `node --test` and `bun test`.
+the totals are 1,793 tests, identical under `node --test` and `bun test`.
 
 ## Behaviour
+
+- **An upgrade transaction is inactive by the next task, deterministically.**
+  After the `upgradeneeded` dispatch it went inactive through a task
+  (`setImmediate`), which Node runs *after* the timers phase — so a
+  `setTimeout(fn, 0)` queued inside the handler could still find it active once
+  a millisecond had passed by the time the handler returned. That is the same
+  race `lib/scheduling.ts` documents for `setImmediate`, and the reason every
+  other deactivation already used the bounded microtask drain; the upgrade path
+  was the one site left on the task. Load-dependent: WPT
+  `upgrade-transaction-deactivation-timing` ("Upgrade transactions are
+  deactivated before next task") failed 2 in 5 full Node runs and 8 in 72 when
+  the file was forked 24-wide, never standalone, and never under Bun — and
+  because the file's keep-alive spinner is only released after the assertion, a
+  failure also timed the file out, so the suite went red twice. It uses
+  `queueAfterCheckpoint` now; the regression test burns the millisecond inside
+  the handler, so it fails on the old scheduling every time rather than under
+  load.
 
 - **`SyntaxError` carries its own message.** The default was the `VersionError`
   text; `messages.SyntaxError` existed and was never read.

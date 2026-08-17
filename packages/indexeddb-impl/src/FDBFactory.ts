@@ -6,7 +6,7 @@ import Database from "./lib/Database.ts";
 import enforceRange from "./lib/enforceRange.ts";
 import { AbortError, VersionError } from "./lib/errors.ts";
 import FakeEvent from "./lib/FakeEvent.ts";
-import { queueTask } from "./lib/scheduling.ts";
+import { queueAfterCheckpoint, queueTask } from "./lib/scheduling.ts";
 import { validateRequiredArguments } from "./lib/validateRequiredArguments.ts";
 import type { FDBDatabaseInfo } from "./lib/types.ts";
 import {
@@ -262,11 +262,23 @@ const runVersionchangeTransaction = (
             // The "upgrade a database" steps are supposed to run as a database task on the database access task source
             // (i.e. off the main thread), but since we're actually running on the main thread, we have to be tricky:
             // 1. If any `upgradeneeded` event handlers errored, abort synchronously
-            // 2. Else yield to allow any microtasks to run in response to that event
+            // 2. Else deactivate once the microtask checkpoint that follows the
+            //    dispatch has run -- after every continuation a handler chained
+            //    off the event, and before the next task.
+            //
+            // queueAfterCheckpoint, not queueTask. A task (setImmediate) runs in
+            // Node's check phase, which comes *after* the timers phase, so a
+            // setTimeout(fn, 0) queued inside the handler could observe the
+            // transaction still active once >= 1ms had passed -- a load-dependent
+            // failure of "Upgrade transactions are deactivated before next task"
+            // (WPT upgrade-transaction-deactivation-timing) that reproduced 8 in
+            // 72 forks and never standalone. The bounded microtask drain lands
+            // before any macrotask on both runtimes; it is the same primitive
+            // FDBTransaction._deactivateAfterCheckpoint uses for the same reason.
             if (didThrow) {
                 concludeUpgrade();
             } else {
-                queueTask(concludeUpgrade);
+                queueAfterCheckpoint(concludeUpgrade);
             }
 
             transaction._prioritizedListeners.set("error", () => {

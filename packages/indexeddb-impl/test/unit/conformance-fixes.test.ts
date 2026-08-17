@@ -343,3 +343,70 @@ describe("events", () => {
         assert.equal(seenByTransaction, true);
     });
 });
+
+describe("upgrade transaction deactivation", () => {
+    it("an upgrade transaction is inactive by the next task, even one queued from the handler", async () => {
+        // The transaction used to go inactive through a task (setImmediate),
+        // which Node runs after the timers phase -- so a setTimeout(0) queued
+        // inside upgradeneeded could still find it active once >= 1ms had
+        // passed by the time the handler returned. Load-dependent: WPT
+        // upgrade-transaction-deactivation-timing failed 8 in 72 forks and
+        // never standalone. It is a microtask drain now, which always lands
+        // before any timer.
+        //
+        // The handler burns 2ms after queueing the timer, so the window --
+        // "the timer is already due when the handler returns" -- is open on
+        // an idle machine too. That is what makes this a regression test and
+        // not a load test: with the old scheduling it fails every time.
+        let inactiveInTimer: boolean | undefined;
+        let activeInHandler: boolean | undefined;
+        let activeInMicrotask: boolean | undefined;
+
+        const dbName = `conformance-fixes-upgrade-${++dbCount}`;
+        const db = await new Promise<FDBDatabase>((resolve, reject) => {
+            const request = fakeIndexedDB.open(dbName, 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+            request.onupgradeneeded = () => {
+                const store = request.result.createObjectStore("s");
+                activeInHandler = isActive(store);
+                queueMicrotask(() => {
+                    activeInMicrotask = isActive(store);
+                });
+                // Keep the transaction alive across the timer, so what the
+                // timer observes is deactivation and not completion.
+                let spinning = true;
+                const spin = () => {
+                    if (!spinning) return;
+                    store.get(0).onsuccess = spin;
+                };
+                spin();
+                setTimeout(() => {
+                    inactiveInTimer = !isActive(store);
+                    spinning = false;
+                }, 0);
+                const start = Date.now();
+                while (Date.now() - start < 2) {
+                    // make the timer due before the handler returns
+                }
+            };
+        });
+        db.close();
+
+        assert.equal(activeInHandler, true, "active inside upgradeneeded");
+        assert.equal(activeInMicrotask, true, "active in the following microtask");
+        assert.equal(inactiveInTimer, true, "inactive in a task queued from the handler");
+    });
+});
+
+/** True if `store.get()` is accepted, false if it throws TransactionInactiveError. */
+function isActive(store: FDBObjectStore): boolean {
+    try {
+        const request = store.get(0);
+        request.onerror = (event: Event) => event.preventDefault();
+        return true;
+    } catch (error) {
+        assert.equal((error as Error).name, "TransactionInactiveError");
+        return false;
+    }
+}

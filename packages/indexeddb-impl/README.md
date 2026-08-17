@@ -72,13 +72,13 @@ page against a database that resets on reload.
 
 ## Tests
 
-Four suites, 1,792 tests, all headless and all hermetic:
+Four suites, 1,793 tests, all headless and all hermetic:
 
 | Suite                | What it is                                                                                                                                                     |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test/wpt/`          | The W3C [web-platform-tests](https://github.com/web-platform-tests/wpt) IndexedDB conformance corpus, 229 files (19 of them support files that are skipped), each forked into its own process. 1,536 pass. |
 | `test/qunit/`        | The indexedDBmock corpus, 105 tests. Upstream could only run this in a real browser.                                                                           |
-| `test/unit/`         | The project's own unit tests, 123 of them — including `conformance-fixes.test.ts`, one test per spec fix that the corpus did not cover.                        |
+| `test/unit/`         | The project's own unit tests, 124 of them — including `conformance-fixes.test.ts`, one test per spec fix that the corpus did not cover.                        |
 | `test/smoke.test.ts` | The public export surface, plus a Dexie round-trip.                                                                                                            |
 
 ```bash

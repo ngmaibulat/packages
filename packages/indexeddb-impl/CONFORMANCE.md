@@ -115,6 +115,16 @@ The bound (64 rounds) is the approximation. A continuation longer than that
 would find the transaction already inactive — which is also what a browser does
 to anyone who awaits something slow mid-transaction.
 
+All three deactivation points use it: a transaction created by
+`db.transaction()`, a request whose success or error event has been dispatched,
+and — since the review after 0.1.2 — the upgrade transaction once the
+`upgradeneeded` dispatch returns. That last one was on `setImmediate` until
+then, and it was the load-dependent race in the table above made real:
+`upgrade-transaction-deactivation-timing` ("Upgrade transactions are
+deactivated before next task") failed 8 in 72 forks and never standalone, and
+only under Node. `conformance-fixes.test.ts` now burns the millisecond inside
+the handler so the old ordering fails every time.
+
 ### The three that stay
 
 - **`transaction-deactivation-timing`, "Deactivation of new transactions happens
