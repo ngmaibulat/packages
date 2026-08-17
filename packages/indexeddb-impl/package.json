@@ -1,6 +1,6 @@
 {
     "name": "@aibulat/indexeddb-impl",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "description": "A pure JavaScript in-memory implementation of IndexedDB, for tests that must not need a browser",
     "type": "module",
     "main": "./dist/index.js",
