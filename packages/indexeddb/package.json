@@ -1,6 +1,6 @@
 {
     "name": "@aibulat/indexeddb",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "description": "IndexedDB with usability: a small promise wrapper over the raw API, plus Nexie, a Dexie-compatible high-level API, from one package",
     "type": "module",
     "sideEffects": true,
