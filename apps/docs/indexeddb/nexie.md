@@ -1,7 +1,7 @@
-# Nexie
+# Nexie — the high-level API
 
-`@aibulat/indexeddb` ships two API sets from one package. The [overview](./index.md)
-covers the low-level one, where you still think in object stores, transactions and
+`@aibulat/indexeddb` ships [two API sets](./index.md) from one package. The
+[low-level one](./low-level.md) has you thinking in object stores, transactions and
 cursors. **Nexie** is the high-level one — a re-implementation of the Dexie 4 API,
 at its own subpath:
 

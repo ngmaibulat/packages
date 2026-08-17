@@ -1,14 +1,38 @@
 # @aibulat/indexeddb
 
-IndexedDB, but usable. The raw API predates promises: every read is an `IDBRequest`
-you attach `onsuccess` and `onerror` to, and the type definitions know nothing about
-your schema. This library wraps the whole surface in `Proxy` objects so requests
-become promises and store names become literal types.
+One package, **two APIs**. Install it once and pick the entry point that suits the
+code you are writing: a thin promise wrapper over raw IndexedDB, or a full
+Dexie-compatible database layer with a schema DSL, a query builder and reactive
+queries.
 
 It is a fork of [`idb`](https://github.com/jakearchibald/idb) by Jake Archibald,
-forked at v8.0.3 and maintained as an API-compatible superset: everything idb does
-works the same way, plus fixes and additions upstream never shipped. It is ~1.9 kB
-brotli'd and has no runtime dependencies.
+forked at v8.0.3 and maintained as an API-compatible superset, with the high-level
+API added alongside it. ESM only, zero runtime dependencies.
+
+## Two APIs
+
+| | [Low-level](./low-level.md) | [Nexie](./nexie.md) — high-level |
+|---|---|---|
+| **Import** | `@aibulat/indexeddb` | `@aibulat/indexeddb/nexie` |
+| **Shape** | `openDB()`, object stores, transactions, cursors | `new Nexie()`, schema DSL, query builder |
+| **Mental model** | raw IndexedDB, with promises and types | a small ORM over IndexedDB |
+| **Size** | ~1.9 kB brotli'd | ~124 kB unminified |
+| **Transactions** | native — they auto-commit if you `await` anything else | join automatically across `await` |
+| **Reactive queries** | — | `liveQuery` |
+| **Coming from** | `idb` — it is a superset, nothing to change | `dexie` — migration is a rename |
+
+## Which one
+
+**Take the [low-level API](./low-level.md)** if you want IndexedDB itself with the
+sharp edges filed off. You keep full control of stores, transactions and cursors,
+you keep the ~1.9 kB, and if you already use `idb` you are already using it — this
+is an API-compatible superset.
+
+**Take [Nexie](./nexie.md)** if you would rather describe a schema and query it. You
+get `db.friends.where("age").above(25).toArray()` instead of a cursor walk,
+transactions that survive `await` without auto-committing, CRUD hooks, middleware,
+and `liveQuery` for views that re-render themselves when their own results change.
+If you are coming from Dexie 4, migration is `Dexie` → `Nexie` and nothing else.
 
 ## Install
 
@@ -16,141 +40,54 @@ brotli'd and has no runtime dependencies.
 npm install @aibulat/indexeddb
 ```
 
-ESM only — there is no CommonJS build and no UMD global.
+That is the whole install for both. Nexie is not a separate package and adds no
+dependency — it is a second entry point in this one.
 
-## Signature
+The two module graphs are **disjoint**: nothing in the Nexie graph imports the
+low-level entry, so importing one never pulls in the other. Choosing Nexie costs the
+low-level bundle nothing, and the ~1.9 kB figure stays true for anyone who never
+touches `./nexie`.
 
-```ts
-function openDB<DBTypes extends DBSchema | unknown = unknown>(
-    name: string,
-    version?: number,
-    callbacks?: OpenDBCallbacks<DBTypes>,
-): Promise<IDBPDatabase<DBTypes>>;
+## The same task, both ways
 
-function deleteDB(
-    name: string,
-    callbacks?: DeleteDBCallbacks,
-): Promise<void>;
+Create a store, write a record, read it back.
 
-function wrap(value: IDBDatabase): IDBPDatabase;
-function unwrap<T>(wrapped: T): unknown;
+::: code-group
 
-function ignoreConstraints<T>(operation: Promise<T>): Promise<T | undefined>;
-```
-
-## Use
-
-```ts
+```ts [Low-level]
 import { openDB } from "@aibulat/indexeddb";
 
-const db = await openDB("my-db", 1, {
+const db = await openDB("friends-db", 1, {
     upgrade(db) {
-        db.createObjectStore("keyval");
+        const store = db.createObjectStore("friends", {
+            keyPath: "id",
+            autoIncrement: true,
+        });
+        store.createIndex("age", "age");
     },
 });
 
-await db.put("keyval", "hello", "greeting");
-console.log(await db.get("keyval", "greeting")); // "hello"
+await db.add("friends", { name: "Alice", age: 30 });
+
+const grownups = await db.getAllFromIndex(
+    "friends",
+    "age",
+    IDBKeyRange.lowerBound(26),
+);
 ```
 
-### Typed schemas
-
-Describe the database once and every store name, key and value is checked:
-
-```ts
-import { openDB, type DBSchema } from "@aibulat/indexeddb";
-
-interface MyDB extends DBSchema {
-    articles: {
-        key: number;
-        value: { id: number; title: string; date: Date };
-        indexes: { date: Date };
-    };
-}
-
-const db = await openDB<MyDB>("articles-db", 1, {
-    upgrade(db) {
-        const store = db.createObjectStore("articles", { keyPath: "id" });
-        store.createIndex("date", "date");
-    },
-});
-
-// Typed: the store name, the value shape and the index name are all checked.
-const byDate = await db.getAllFromIndex("articles", "date");
-```
-
-### Async iteration
-
-Stores, indexes and cursors are async-iterable:
-
-```ts
-const tx = db.transaction("articles");
-
-for await (const cursor of tx.store) {
-    console.log(cursor.value.title);
-}
-```
-
-Use `iterateKeys()` when you only need keys and would rather not read every value.
-
-### Beyond idb
-
-```ts
-// Read in reverse, or ask for keys and values together.
-const newest = await db.getAll("articles", { direction: "prev", count: 10 });
-const records = await db.getAllRecords("articles");   // { key, primaryKey, value }
-
-// Skip duplicates without losing the rest of the batch.
-const tx = db.transaction("articles", "readwrite");
-await Promise.all(articles.map((a) => ignoreConstraints(tx.store.add(a))));
-await tx.done;
-
-// Close at the end of the scope.
-using db2 = await openDB("articles-db", 1);
-```
-
-## Behaviour
-
-| | |
-|---|---|
-| Requests | Any method that would return an `IDBRequest` returns a promise instead. |
-| Transactions | `tx.done` is a promise for the transaction completing, rejecting with the error that actually caused the failure. `tx.store` is the store, when the transaction covers exactly one. |
-| Shortcuts | `db.get`, `getKey`, `getAll`, `getAllKeys`, `getAllRecords`, `count`, `put`, `add`, `delete`, `clear` and the `…FromIndex` variants run a whole one-store transaction for you. |
-| Identity | Wrapped objects are cached, so `db.transaction === db.transaction`, and they still satisfy `instanceof IDBDatabase`. |
-| Escape hatch | `unwrap()` returns the underlying native object; `wrap()` enhances one you were handed. |
-
-## Gotchas
-
-- **Do not `await` anything else mid-transaction.** IndexedDB auto-commits a
-  transaction once it has nothing left to do after microtasks drain. Awaiting a
-  `fetch` in the middle closes it, and the next `store.put` fails. This is IndexedDB
-  behaviour, not something the wrapper can hide.
-- **Some methods throw rather than reject.** The library cannot know in advance which
-  members return an `IDBRequest`, so `store.put` and friends may throw synchronously.
-  Inside an `async` function there is no observable difference. For the same reason,
-  assigning `onsuccess`/`onerror` to the returned promise does nothing — there is no
-  request there. Use `unwrap()` if you need the real one.
-- **Types degrade deliberately without a schema.** With no `DBSchema` type argument,
-  store names widen to `string` and values to `any` — which is the documented way to
-  opt out during multi-version migrations.
-
-Full API reference, including every enhancement and the TypeScript opt-out, is in the
-[package README](https://github.com/ngmaibulat/packages/tree/main/packages/indexeddb#readme).
-
-## The high-level API
-
-Everything above is the low-level API: stores, transactions and cursors, with promises
-instead of requests. The same package also ships **[Nexie](./nexie.md)** at
-`@aibulat/indexeddb/nexie` — a re-implementation of the Dexie 4 API, with a schema DSL,
-a query builder, transactions that join automatically across `await`, and `liveQuery`.
-
-```ts
+```ts [Nexie]
 import Nexie from "@aibulat/indexeddb/nexie";
 
-const db = new Nexie("MyDB");
+const db = new Nexie("friends-db");
 db.version(1).stores({ friends: "++id, name, age" });
-await db.friends.where("age").above(25).toArray();
+
+await db.friends.add({ name: "Alice", age: 30 });
+
+const grownups = await db.friends.where("age").above(25).toArray();
 ```
 
-The two graphs are disjoint, so importing one never pulls in the other and the bundle
-above is unaffected by the existence of the other.
+:::
+
+Same database, same storage engine underneath — only the API you write against
+differs.

@@ -121,12 +121,22 @@ export default defineConfig({
                     items: [{ text: "Overview", link: "/json/" }],
                 },
             ],
+            // One package, two entry points: the low-level idb-compatible API at
+            // `.` and Nexie at `./nexie`. The Overview is a chooser between them,
+            // not a page about either one.
             "/indexeddb/": [
                 {
                     text: "@aibulat/indexeddb",
                     items: [
                         { text: "Overview", link: "/indexeddb/" },
-                        { text: "Nexie", link: "/indexeddb/nexie" },
+                        {
+                            text: "Low-level API",
+                            link: "/indexeddb/low-level",
+                        },
+                        {
+                            text: "Nexie (high-level)",
+                            link: "/indexeddb/nexie",
+                        },
                     ],
                 },
             ],

@@ -31,8 +31,8 @@ import { indexedDB, IDBKeyRange } from "@aibulat/indexeddb-impl";
 
 ### Pairing with the wrapper
 
-[`@aibulat/indexeddb`](/indexeddb/) is a promise wrapper over the IndexedDB API;
-this is an implementation of the API itself. Together they give you a typed,
+[`@aibulat/indexeddb`](/indexeddb/low-level) is a promise wrapper over the IndexedDB
+API; this is an implementation of the API itself. Together they give you a typed,
 promise-based database in a test process:
 
 ```ts

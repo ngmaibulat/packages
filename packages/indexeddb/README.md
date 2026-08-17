@@ -1,13 +1,27 @@
 # @aibulat/indexeddb
 
-IndexedDB with usability. A tiny (~1.9 kB brotli'd, zero runtime dependencies) library that mostly mirrors the IndexedDB API, but with small improvements that make a big difference to usability.
+IndexedDB with usability. One package, **two APIs** — install it once and import the one that suits the code you are writing.
 
-> A fork of [`idb`](https://github.com/jakearchibald/idb) by Jake Archibald, forked at v8.0.3. It is an **API-compatible superset**: everything idb does works the same way, plus fixes and additions upstream has not shipped — see [Changes](#changes) for the list. Ships ESM only, and is maintained as part of the [`@aibulat`](https://github.com/ngmaibulat/packages) workspace. See [LICENSE](LICENSE) for the retained upstream notice.
+> A fork of [`idb`](https://github.com/jakearchibald/idb) by Jake Archibald, forked at v8.0.3. The low-level API is an **API-compatible superset** of idb: everything idb does works the same way, plus fixes and additions upstream has not shipped — see [Changes](#changes) for the list. Ships ESM only, and is maintained as part of the [`@aibulat`](https://github.com/ngmaibulat/packages) workspace. See [LICENSE](LICENSE) for the retained upstream notice.
+
+## Two APIs
+
+|                     | [Part 1 — Low-level](#part-1--low-level-api-aibulatindexeddb)                    | [Part 2 — Nexie, high-level](#part-2--nexie-the-high-level-api-aibulatindexeddbnexie) |
+| ------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **Import**          | `@aibulat/indexeddb`                                                             | `@aibulat/indexeddb/nexie`                                                            |
+| **Shape**           | `openDB()`, object stores, transactions, cursors                                 | `new Nexie()`, schema DSL, query builder                                              |
+| **Mental model**    | raw IndexedDB, with promises and types                                           | a small ORM over IndexedDB                                                            |
+| **Size**            | ~1.9 kB brotli'd                                                                 | ~124 kB unminified                                                                    |
+| **Transactions**    | native — they auto-commit if you `await` anything else                           | join automatically across `await`                                                     |
+| **Reactive queries**| —                                                                                | `liveQuery`                                                                           |
+| **Coming from**     | `idb` — it is a superset, nothing to change                                      | `dexie` — migration is a rename                                                       |
+
+The two module graphs are **disjoint**: nothing in the Nexie graph imports the low-level entry, so importing one never pulls in the other. Choosing Nexie costs the low-level bundle nothing, and the ~1.9 kB figure above stays true for anyone who never touches `./nexie`.
 
 1. [Installation](#installation)
 1. [Changes](#changes)
 1. [Browser support](#browser-support)
-1. [API](#api)
+1. [**Part 1 — Low-level API** (`@aibulat/indexeddb`)](#part-1--low-level-api-aibulatindexeddb)
    1. [`openDB`](#opendb)
    1. [`deleteDB`](#deletedb)
    1. [`unwrap`](#unwrap)
@@ -20,9 +34,20 @@ IndexedDB with usability. A tiny (~1.9 kB brotli'd, zero runtime dependencies) l
    1. [`getAll` options](#getall-options)
    1. [`ignoreConstraints`](#ignoreconstraints)
    1. [Closing with `using`](#closing-with-using)
-1. [Examples](#examples)
-1. [TypeScript](#typescript)
-1. [Nexie — the high-level API](#nexie--the-high-level-api)
+   1. [Examples](#examples)
+   1. [TypeScript](#typescript)
+1. [**Part 2 — Nexie, the high-level API** (`@aibulat/indexeddb/nexie`)](#part-2--nexie-the-high-level-api-aibulatindexeddbnexie)
+   1. [Coming from Dexie](#coming-from-dexie)
+   1. [Schema](#schema)
+   1. [Querying](#querying)
+   1. [Transactions](#transactions)
+   1. [Opening a database you did not declare](#opening-a-database-you-did-not-declare)
+   1. [Options](#options)
+   1. [`liveQuery`](#livequery)
+   1. [Hooks, events and middleware](#hooks-events-and-middleware)
+   1. [Errors](#errors)
+   1. [Differences from Dexie](#differences-from-dexie)
+1. [Developing](#developing)
 
 # Installation
 
@@ -32,14 +57,23 @@ IndexedDB with usability. A tiny (~1.9 kB brotli'd, zero runtime dependencies) l
 pnpm add @aibulat/indexeddb
 ```
 
-Then, assuming you're using a module-compatible system (like Vite, webpack, Rollup etc):
+That one install carries both APIs. Then, assuming you're using a module-compatible system (like Vite, webpack, Rollup etc), import whichever one you want:
 
 ```js
+// Part 1 — the low-level API.
 import { openDB, deleteDB, wrap, unwrap } from '@aibulat/indexeddb';
 
 async function doDatabaseStuff() {
   const db = await openDB(…);
 }
+```
+
+```js
+// Part 2 — Nexie, the high-level API. Same package, no extra dependency.
+import Nexie, { liveQuery } from '@aibulat/indexeddb/nexie';
+
+const db = new Nexie('MyDB');
+db.version(1).stores({ friends: '++id, name, age' });
 ```
 
 ## Directly in a browser
@@ -78,7 +112,13 @@ If you need a global for a non-module script, assign one yourself:
 
 This library targets modern browsers, as in Chrome, Firefox, Safari, and other browsers that use those engines, such as Edge. IE is not supported.
 
-# API
+# Part 1 — Low-level API (`@aibulat/indexeddb`)
+
+```js
+import { openDB, deleteDB, wrap, unwrap, ignoreConstraints } from '@aibulat/indexeddb';
+```
+
+Everything in this part is the package's root entry: a thin wrapper that mostly mirrors the IndexedDB API, with small improvements that make a big difference to usability. You still think in object stores, transactions and cursors — that is the point of it. If you would rather describe a schema and query it, skip to [Part 2](#part-2--nexie-the-high-level-api-aibulatindexeddbnexie).
 
 ## `openDB`
 
@@ -378,9 +418,9 @@ await db.put('keyval', 'hello', 'greeting');
 
 This needs `Symbol.dispose`, which is TypeScript 5.2+ with `ESNext.Disposable` in your `lib`. Nothing is required of consumers who don't use it: the declaration disappears when the lib is absent, rather than failing to compile.
 
-# Examples
+## Examples
 
-## Keyval store
+### Keyval store
 
 This is very similar to `localStorage`, but async. If this is _all_ you need, you may be interested in [idb-keyval](https://www.npmjs.com/package/idb-keyval). You can always upgrade to this library later.
 
@@ -410,7 +450,7 @@ export async function keys() {
 }
 ```
 
-## Article store
+### Article store
 
 ```js
 import { openDB } from '@aibulat/indexeddb';
@@ -474,7 +514,7 @@ async function demo() {
 }
 ```
 
-# TypeScript
+## TypeScript
 
 This library is fully typed, and you can improve things by providing types for your database:
 
@@ -524,7 +564,7 @@ Optionally, `indexes` can contain a map of index names, to the type of key withi
 
 Provide this interface when calling `openDB`, and from then on your database will be strongly typed. This also allows your IDE to autocomplete the names of stores and indexes.
 
-## Opting out of types
+### Opting out of types
 
 If you call `openDB` without providing types, your database will use basic types. However, sometimes you'll need to interact with stores that aren't in your schema, perhaps during upgrades. In that case you can cast.
 
@@ -561,9 +601,13 @@ You can also cast to a typeless database by omitting the type, eg `db as IDBPDat
 
 Note: Types like `IDBPDatabase` are used by TypeScript only. The implementation uses proxies under the hood.
 
-# Nexie — the high-level API
+# Part 2 — Nexie, the high-level API (`@aibulat/indexeddb/nexie`)
 
-Everything above is the *low-level* API: you still think in object stores, transactions and cursors. The same package also ships a high-level one at a separate subpath, **Nexie** — a re-implementation of the Dexie 4 API.
+```ts
+import Nexie, { liveQuery } from '@aibulat/indexeddb/nexie';
+```
+
+Everything in [Part 1](#part-1--low-level-api-aibulatindexeddb) is the *low-level* API: you still think in object stores, transactions and cursors. **Nexie** is the other API in this package — a re-implementation of the Dexie 4 API, at its own subpath. You describe a schema and query it; transactions survive `await` instead of auto-committing; `liveQuery` re-runs a query when its own results could have changed.
 
 ```sh
 npm install @aibulat/indexeddb   # same package, no extra dependency
@@ -599,6 +643,78 @@ Migration is a rename and nothing else:
 Dexie-branded *identifiers* are renamed — `NexieError`, `Nexie.Promise`, `Nexie.addons`, `Nexie.errnames`, `Nexie.currentTransaction`. API-visible *strings* are not, because code matches on them: error `name` values stay `'ConstraintError'` and friends, so `.catch('ConstraintError', handler)` still works, as do the schema DSL, the `'rw!'` / `'r?'` mode strings and the `':id'` magic index.
 
 This is a clean-room implementation, not a port: Dexie is Apache-2.0, this package is MIT, and no Dexie code was copied.
+
+## Schema
+
+A version declares its stores with the Dexie schema DSL, unchanged:
+
+```ts
+db.version(1).stores({
+    friends: '++id, name, age, *tags, [name+age], &email',
+});
+```
+
+| Token          | Meaning                                                |
+| -------------- | ------------------------------------------------------ |
+| `++id`         | Auto-incrementing primary key                          |
+| `id`           | Primary key, supplied by you                           |
+| `name`         | Indexed property                                       |
+| `&email`       | Unique index                                           |
+| `*tags`        | Multi-entry index — one entry per array element        |
+| `[name+age]`   | Compound index                                         |
+| _(leading `,`)_ | Outbound primary key: no key stored inside the record |
+
+A compound index also answers queries on its **leading prefix**: with only `[name+age]` declared, `db.friends.where('name').equals('Alice')` works. That is a correctness feature rather than an optimisation — Dexie users rely on it. `':id'` is the magic index naming the primary key itself.
+
+Later versions get an upgrade function, run once per version between the stored one and the current:
+
+```ts
+db.version(2)
+    .stores({ friends: '++id, name, age, email' })
+    .upgrade((tx) =>
+        tx.table('friends').toCollection().modify((f) => {
+            f.email ??= `${f.name}@example.com`;
+        }),
+    );
+```
+
+Set a store to `null` to drop it. `db.tables` lists the `Table` objects, and each table is also a property on the database (`db.friends`) as long as the name does not collide with a `Nexie` member.
+
+## Querying
+
+`table.where()` returns a `WhereClause`; every operator on it returns a `Collection`, which is lazy until you materialise it:
+
+```ts
+await db.friends.get(1);
+await db.friends.where('age').between(20, 40).toArray();
+await db.friends.where('name').startsWithIgnoreCase('a').limit(10).toArray();
+await db.friends.where('age').anyOf([20, 30, 40]).reverse().sortBy('name');
+await db.friends.where({ name: 'Alice', age: 30 }).first();
+await db.friends.orderBy('age').offset(10).limit(5).toArray();
+await db.friends.filter((f) => f.name.length > 4).each((f) => console.log(f));
+```
+
+All 18 `WhereClause` operators are present — `equals`, `notEqual`, `above`, `aboveOrEqual`, `below`, `belowOrEqual`, `between`, `startsWith`, `anyOf`, `noneOf`, `inAnyRange`, `startsWithAnyOf` and the four `…IgnoreCase` variants — along with `or()` unions, `distinct()`, `until()`, `and()` and the `each*` family. Materialisers: `toArray`, `first`, `last`, `count`, `keys`, `primaryKeys`, `uniqueKeys`, `sortBy`.
+
+Writes:
+
+```ts
+await db.friends.add({ name: 'Alice', age: 30 });   // key written back onto the object
+await db.friends.put({ id: 1, name: 'Alice', age: 31 });
+await db.friends.update(1, { age: 32 });
+await db.friends.upsert(1, { age: 33 });
+await db.friends.bulkAdd(records, { allKeys: true });
+await db.friends.where('age').below(18).delete();
+await db.friends.where('age').above(65).modify({ retired: true });
+```
+
+`update`, `upsert`, `modify` and `bulkUpdate` take an `UpdateSpec`, which accepts the modifier functions exported alongside the class:
+
+```ts
+import { add, remove, replacePrefix } from '@aibulat/indexeddb/nexie';
+
+await db.friends.update(1, { age: add(1), tags: remove('new') });
+```
 
 ## Transactions
 
@@ -683,9 +799,30 @@ Two things to know:
 - The same zone rule applies: **await only Nexie promises inside a querier**, or the reads after that point go unrecorded and the query stops re-running for them.
 - Invalidation is exact on primary keys, and on secondary indexes for `add`, `put` and `delete` — a `put` reads the record it displaces, so a query watching the *old* value of a renamed field is woken too. That read happens only while something is subscribed, so an application with no `liveQuery` pays nothing for it. Range deletes are the one case still widened to the whole index, since being precise there would mean reading an unbounded number of records. The approximation is one-directional by design: it re-runs a query that need not have re-run, never the reverse.
 
-## Extending it
+## Hooks, events and middleware
 
-`db.use()` installs a middleware over DBCore — the layer every read and every write passes through. The library's own CRUD hooks and observability are built on it rather than beside it:
+CRUD hooks fire around every write, whichever API path reached it:
+
+```ts
+db.friends.hook('creating', (primKey, obj) => {
+    obj.createdAt = Date.now();
+});
+db.friends.hook('reading', (obj) => decorate(obj));
+db.friends.hook('updating', (mods, primKey, obj) => ({ updatedAt: Date.now() }));
+db.friends.hook('deleting', (primKey, obj) => audit(obj));
+```
+
+Database events cover the lifecycle:
+
+```ts
+db.on('populate', () => db.friends.bulkAdd(seedData));
+db.on('blocked', () => console.warn('another tab is holding the old version'));
+db.on('ready', () => console.log('open and usable'));
+db.on('versionchange', () => db.close());
+db.on('close', () => console.log('connection gone'));
+```
+
+Underneath both, `db.use()` installs a middleware over DBCore — the layer every read and every write passes through. The library's own CRUD hooks and observability are built on it rather than beside it, which is what keeps the extension point exercised:
 
 ```ts
 db.use({
@@ -706,7 +843,23 @@ db.use({
 });
 ```
 
-CRUD hooks (`db.friends.hook('creating' | 'reading' | 'updating' | 'deleting', …)`), database events (`db.on('populate' | 'ready' | 'blocked' | 'versionchange' | 'close')`), per-version `upgrade()`, `mapToClass`, `Entity` and `Nexie.addons` are all present.
+`mutate`, `get`, `getMany`, `count`, `query` and `openCursor` are all interceptable. `mapToClass`, the `Entity` base class and `Nexie.addons` are present too.
+
+## Errors
+
+```ts
+try {
+    await db.friends.add({ name: 'Alice', email: 'taken@example.com' });
+} catch (error) {
+    if (error instanceof Nexie.ConstraintError) { /* … */ }
+}
+
+await db.friends.add(friend).catch('ConstraintError', handleDuplicate);
+```
+
+Every error is a `NexieError` carrying the Dexie `name` string, so both forms work and `Nexie.errnames.Constraint === 'ConstraintError'` holds. The named-`catch` form is on Nexie's own promises, which is what every API here returns. `exceptions` and `errnames` are exported from the subpath if you need them directly, and the constructors are also mounted on the class (`Nexie.ConstraintError`, `Nexie.ModifyError`, …).
+
+Alongside the mirrored IndexedDB `DOMException` names there are Nexie-only ones: `OpenFailedError`, `SchemaError`, `UpgradeError`, `InvalidTableError`, `NoSuchDatabaseError`, `PrematureCommitError`, `ModifyError`, `BulkError` and `ForeignAwaitError` (see [Transactions](#transactions)).
 
 ## Differences from Dexie
 

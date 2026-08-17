@@ -1,7 +1,7 @@
 {
     "name": "@aibulat/indexeddb",
     "version": "0.1.4",
-    "description": "A small wrapper that makes IndexedDB usable",
+    "description": "IndexedDB with usability: a small promise wrapper over the raw API, plus Nexie, a Dexie-compatible high-level API, from one package",
     "type": "module",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
@@ -35,7 +35,12 @@
     "keywords": [
         "IndexedDB",
         "idb",
+        "nexie",
+        "dexie",
         "database",
+        "orm",
+        "query-builder",
+        "livequery",
         "browser",
         "storage",
         "promise",

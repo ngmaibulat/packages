@@ -1,3 +1,30 @@
+# 0.1.5 — the two APIs are documented as two APIs
+
+No code changes: `dist/index.js` and `dist/nexie.js` are byte-identical to 0.1.4.
+
+This package has shipped two independent APIs since 0.1.2 — the low-level idb
+superset at `.` and Nexie at `./nexie` — but the documentation still read as one API
+with a second bolted onto the end. The README is now explicitly in two parts, with a
+comparison table above the table of contents:
+
+|                  | Part 1 — low-level     | Part 2 — Nexie, high-level  |
+| ---------------- | ---------------------- | --------------------------- |
+| Import           | `@aibulat/indexeddb`   | `@aibulat/indexeddb/nexie`  |
+| Shape            | `openDB()`, stores, cursors | `new Nexie()`, schema DSL, query builder |
+| Size             | ~1.9 kB brotli'd       | ~124 kB unminified          |
+| Coming from      | `idb`                  | `dexie`                     |
+
+`Examples` and `TypeScript` were top-level sections sitting *between* the two APIs
+while belonging entirely to the low-level one; they are subsections of Part 1 now.
+Part 2 gained the `Schema`, `Querying` and `Errors` sections it had been missing, and
+`Extending it` became `Hooks, events and middleware`.
+
+The `description` and `keywords` in `package.json` described only the low-level API,
+which is what npm shows above the README; both now name Nexie.
+
+The documentation site splits the same way, into an overview that chooses between the
+two, a low-level page and the Nexie page.
+
 # 0.1.4 — a zone attribution bug, and a hang it caused
 
 **Fixes a hang in 0.1.2 and 0.1.3.** A fire-and-forget transaction scope — one whose

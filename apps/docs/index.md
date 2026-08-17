@@ -79,7 +79,7 @@ features:
       link: /json/
       linkText: Read the docs
     - title: "@aibulat/indexeddb"
-      details: IndexedDB with usability — promises instead of request objects, schema-aware types, store shortcuts and async iteration. A fork of idb.
+      details: Two APIs in one package — a low-level promise wrapper over IndexedDB (a fork of idb), plus Nexie, a Dexie-compatible high-level API with a schema DSL, a query builder and liveQuery.
       link: /indexeddb/
       linkText: Read the docs
     - title: Notes
