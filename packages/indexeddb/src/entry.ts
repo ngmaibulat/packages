@@ -811,6 +811,11 @@ export interface IDBPTransaction<
   ): IDBPObjectStore<DBTypes, TxStores, StoreName, Mode>;
 }
 
+// Every method re-declared with a narrowed signature below has to be omitted
+// here, or the DOM signature is inherited alongside it and the two conflict.
+// That includes `getAllRecords`, which lib.dom does not have yet: omitting a
+// key that does not exist is a no-op today, and the day lib.dom adds it (the
+// engines already have) nothing breaks.
 type IDBPObjectStoreExtends = Omit<
   IDBObjectStore,
   | 'transaction'
@@ -822,6 +827,7 @@ type IDBPObjectStoreExtends = Omit<
   | 'get'
   | 'getAll'
   | 'getAllKeys'
+  | 'getAllRecords'
   | 'getKey'
   | 'index'
   | 'openCursor'
@@ -1030,6 +1036,8 @@ export interface IDBPObjectStore<
   >;
 }
 
+// Same rule as IDBPObjectStoreExtends: `getAllRecords` is omitted ahead of
+// lib.dom declaring it.
 type IDBPIndexExtends = Omit<
   IDBIndex,
   | 'objectStore'
@@ -1037,6 +1045,7 @@ type IDBPIndexExtends = Omit<
   | 'get'
   | 'getAll'
   | 'getAllKeys'
+  | 'getAllRecords'
   | 'getKey'
   | 'openCursor'
   | 'openKeyCursor'

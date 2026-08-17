@@ -10,9 +10,7 @@ const enforceRange = (
     if (isNaN(num) || num < min || num > max) {
         throw new TypeError();
     }
-    if (num >= 0) {
-        return Math.floor(num);
-    }
+    return Math.floor(num);
 };
 
 export default enforceRange;

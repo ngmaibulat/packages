@@ -16,7 +16,11 @@ export interface NexieEvent<
     T extends (...args: any[]) => any = (...args: any[]) => any,
 > {
     subscribers: T[];
-    subscribe(fn: T): void;
+    /**
+     * Extra arguments are passed through by `on(name, fn, ...rest)`. The base
+     * event ignores them; `ready` overrides `subscribe` to read `bSticky`.
+     */
+    subscribe(fn: T, ...rest: unknown[]): void;
     unsubscribe(fn: T): void;
     fire: T;
     /** True while nothing is subscribed, so callers can skip expensive setup. */
@@ -61,7 +65,11 @@ export interface EventTypeSpec {
 }
 
 export interface NexieEventSet {
-    (eventName: string, subscriber: (...args: any[]) => any): unknown;
+    (
+        eventName: string,
+        subscriber: (...args: any[]) => any,
+        ...rest: unknown[]
+    ): unknown;
     /** Direct access: `db.on.populate.subscribe(fn)`. */
     [eventName: string]: any;
     addEventType(name: string, spec?: EventTypeSpec): NexieEvent;
@@ -79,12 +87,13 @@ export function Events(ctx?: unknown): NexieEventSet {
     const on = function (
         eventName: string,
         subscriber: (...args: any[]) => any,
+        ...rest: unknown[]
     ) {
         const event = events[eventName];
         if (!event) {
             throw new TypeError(`Unknown event type: ${eventName}`);
         }
-        event.subscribe(subscriber);
+        event.subscribe(subscriber, ...rest);
         return ctx;
     } as NexieEventSet;
 

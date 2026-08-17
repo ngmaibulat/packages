@@ -312,3 +312,147 @@ suite('db.on lifecycle events', () => {
         await dispose(db);
     });
 });
+
+suite('version(): schema diffs', () => {
+    test('adding and dropping indexes on an existing table', async () => {
+        const name = freshName('index-diff');
+        const v1 = new Nexie(name);
+        v1.version(1).stores({ people: '++id, name, age' });
+        await v1.table('people').add({ name: 'alice', age: 30, city: 'Oslo' });
+        v1.close();
+
+        const v2 = new Nexie(name);
+        v2.version(1).stores({ people: '++id, name, age' });
+        v2.version(2).stores({ people: '++id, name, city' });
+        await v2.open();
+
+        const store = v2.idbdb!.transaction('people').objectStore('people');
+        assert.deepEqual([...store.indexNames].sort(), ['city', 'name']);
+        // The new index is populated from existing records.
+        assert.equal(
+            (await v2.table('people').where('city').equals('Oslo').first())!.name,
+            'alice',
+        );
+        await dispose(v2);
+    });
+
+    test('changing the primary key is refused, not silently ignored', async () => {
+        const name = freshName('pk-change');
+        const v1 = new Nexie(name);
+        v1.version(1).stores({ people: '++id, name' });
+        await v1.table('people').add({ name: 'alice' });
+        v1.close();
+
+        const v2 = new Nexie(name);
+        v2.version(1).stores({ people: '++id, name' });
+        v2.version(2).stores({ people: 'uuid, name' });
+
+        let caught: unknown;
+        await v2.open().catch((error) => {
+            caught = error;
+        });
+        assert.equal((caught as Error).name, 'UpgradeError');
+        assert.include((caught as Error).message, 'primary key');
+        assert.isFalse(v2.isOpen());
+
+        // Still at version 1, still readable.
+        const check = new Nexie(name);
+        check.version(1).stores({ people: '++id, name' });
+        await check.open();
+        assert.equal(check.verno, 1);
+        assert.equal(await check.table('people').count(), 1);
+        await dispose(check);
+    });
+
+    test('toggling autoIncrement is a primary-key change too', async () => {
+        const name = freshName('pk-auto');
+        const v1 = new Nexie(name);
+        v1.version(1).stores({ people: 'id, name' });
+        await v1.open();
+        v1.close();
+
+        const v2 = new Nexie(name);
+        v2.version(1).stores({ people: 'id, name' });
+        v2.version(2).stores({ people: '++id, name' });
+        let caught: unknown;
+        await v2.open().catch((error) => {
+            caught = error;
+        });
+        assert.equal((caught as Error).name, 'UpgradeError');
+        await dispose(v2);
+    });
+});
+
+suite('db.on("ready") semantics', () => {
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+    test('subscribing to an already-open database fires right away', async () => {
+        const db = new Nexie(freshName('ready-late'));
+        db.version(1).stores({ items: '++id' });
+        await db.open();
+
+        let fired = 0;
+        db.on('ready', () => {
+            fired++;
+        });
+        await settle();
+        assert.equal(fired, 1);
+        await dispose(db);
+    });
+
+    test('a plain subscriber fires once; a sticky one fires on every open', async () => {
+        const db = new Nexie(freshName('ready-sticky'));
+        db.version(1).stores({ items: '++id' });
+
+        let plain = 0;
+        let sticky = 0;
+        db.on('ready', () => {
+            plain++;
+        });
+        db.on('ready', () => {
+            sticky++;
+        }, true);
+
+        await db.open();
+        db.close();
+        await db.open();
+        db.close();
+        await db.open();
+        await settle();
+
+        assert.equal(plain, 1);
+        assert.equal(sticky, 3);
+        await dispose(db);
+    });
+
+    test('a subscriber added while ready is firing joins that batch', async () => {
+        const db = new Nexie(freshName('ready-during'));
+        db.version(1).stores({ items: '++id' });
+
+        const order: string[] = [];
+        db.on('ready', async () => {
+            order.push('first');
+            db.on('ready', () => {
+                order.push('added-during');
+            });
+            await db.table('items').add({});
+        });
+        await db.open();
+        await settle();
+        assert.deepEqual(order, ['first', 'added-during']);
+        await dispose(db);
+    });
+
+    test('a ready subscriber may use the database without deadlocking', async () => {
+        const db = new Nexie(freshName('ready-vip'));
+        db.version(1).stores({ items: '++id' });
+        await db.open();
+        let count = -1;
+        db.on('ready', async () => {
+            count = await db.table('items').count();
+        });
+        await settle();
+        assert.equal(count, 0);
+        await dispose(db);
+    });
+});

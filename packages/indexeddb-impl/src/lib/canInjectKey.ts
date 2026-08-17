@@ -15,7 +15,9 @@ const canInjectKey = (keyPath: KeyPath, value: Value) => {
     identifiers.pop();
 
     for (const identifier of identifiers) {
-        if (typeof value !== "object" && !Array.isArray(value)) {
+        // `typeof null === "object"`, and null is exactly what must not be
+        // walked into: Object.hasOwn(null, ...) throws a bare TypeError.
+        if (value === null || (typeof value !== "object" && !Array.isArray(value))) {
             return false;
         }
 
@@ -27,7 +29,7 @@ const canInjectKey = (keyPath: KeyPath, value: Value) => {
         value = value[identifier];
     }
 
-    return typeof value === "object" || Array.isArray(value);
+    return value !== null && (typeof value === "object" || Array.isArray(value));
 };
 
 export default canInjectKey;

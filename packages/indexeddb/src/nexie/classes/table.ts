@@ -1,4 +1,5 @@
 import { exceptions } from '../errors/errors.ts';
+import { cmp, isValidKey } from '../functions/cmp.ts';
 import { getByKeyPath, isArray, isPlainObject, setByKeyPath } from '../functions/utils.ts';
 import {
     applyUpdateSpec,
@@ -26,16 +27,17 @@ export interface BulkOptions {
     allKeys?: boolean;
 }
 
-export class Table<T = any, TKey = IndexableType> {
+/**
+ * `TInsertType` is what `add`/`put`/`bulkAdd`/`bulkPut` accept -- `T` by
+ * default, or `T` with the generated key optional via `EntityTable`.
+ */
+export class Table<T = any, TKey = IndexableType, TInsertType = T> {
     readonly db: Nexie;
     readonly name: string;
     schema: TableSchema;
 
     /** Set when this instance is bound to an explicit transaction. */
     _tx: Transaction | undefined;
-
-    /** The read hook installed by mapToClass, so a re-map can replace it. */
-    private _mappedReadHook: ((value: any) => any) | undefined;
 
     constructor(db: Nexie, name: string, schema: TableSchema, tx?: Transaction) {
         this.db = db;
@@ -108,7 +110,9 @@ export class Table<T = any, TKey = IndexableType> {
     mapToClass(constructor: new (...args: any[]) => any): typeof constructor {
         this.schema.mappedClass = constructor;
 
-        const previous = this._mappedReadHook;
+        // Kept on the schema rather than this Table: table objects are
+        // rebuilt whenever the schema is re-parsed, the schema state survives.
+        const previous = this.schema.mappedReadHook;
         if (previous) this.hook.reading.unsubscribe(previous);
 
         const readHook = (value: any) => {
@@ -118,9 +122,20 @@ export class Table<T = any, TKey = IndexableType> {
             return instance;
         };
 
-        this._mappedReadHook = readHook;
+        this.schema.mappedReadHook = readHook;
         this.hook('reading', readHook);
         return constructor;
+    }
+
+    /**
+     * Make a plain class whose constructor copies its argument's properties,
+     * and map this table to it -- `db.friends.defineClass()` from Dexie.
+     */
+    defineClass(): new (content?: Partial<T>) => T {
+        const Class = function (this: any, content?: unknown) {
+            if (content) Object.assign(this, content);
+        } as unknown as new (content?: Partial<T>) => T;
+        return this.mapToClass(Class);
     }
 
     /** Apply the read hook, if one is installed. */
@@ -137,7 +152,15 @@ export class Table<T = any, TKey = IndexableType> {
 
     // -------------------------------------------------------------- reading
 
-    get(key: TKey): NexiePromise<T | undefined> {
+    get(key: TKey): NexiePromise<T | undefined>;
+    get(criteria: Record<string, any>): NexiePromise<T | undefined>;
+    get(keyOrCriteria: TKey | Record<string, any>): NexiePromise<T | undefined> {
+        // `get({ name: 'Alice', age: 30 })` -- the first record matching all
+        // the criteria, indexed or not; the companion of `where({...})`.
+        if (isPlainObject(keyOrCriteria)) {
+            return this.where(keyOrCriteria as Record<string, IndexableType>).first();
+        }
+        const key = keyOrCriteria as TKey;
         if (key === null || key === undefined) {
             return NexiePromise.reject(
                 new TypeError('Invalid key provided to get()'),
@@ -184,13 +207,13 @@ export class Table<T = any, TKey = IndexableType> {
 
     // -------------------------------------------------------------- writing
 
-    add(item: T, key?: TKey): NexiePromise<TKey> {
+    add(item: TInsertType, key?: TKey): NexiePromise<TKey> {
         return this._trans('readwrite', (trans) =>
             this._write(trans, 'add', item, key),
         );
     }
 
-    put(item: T, key?: TKey): NexiePromise<TKey> {
+    put(item: TInsertType, key?: TKey): NexiePromise<TKey> {
         return this._trans('readwrite', (trans) =>
             this._write(trans, 'put', item, key),
         );
@@ -199,7 +222,7 @@ export class Table<T = any, TKey = IndexableType> {
     private _write(
         trans: Transaction,
         op: 'add' | 'put',
-        item: T,
+        item: TInsertType,
         key?: TKey,
     ): NexiePromise<TKey> {
         return this.core
@@ -258,7 +281,7 @@ export class Table<T = any, TKey = IndexableType> {
     // ----------------------------------------------------------------- bulk
 
     bulkAdd(
-        items: readonly T[],
+        items: readonly TInsertType[],
         keys?: readonly IndexableType[] | BulkOptions,
         options?: BulkOptions,
     ): NexiePromise<any> {
@@ -266,7 +289,7 @@ export class Table<T = any, TKey = IndexableType> {
     }
 
     bulkPut(
-        items: readonly T[],
+        items: readonly TInsertType[],
         keys?: readonly IndexableType[] | BulkOptions,
         options?: BulkOptions,
     ): NexiePromise<any> {
@@ -275,7 +298,7 @@ export class Table<T = any, TKey = IndexableType> {
 
     private _bulkWrite(
         op: 'add' | 'put',
-        items: readonly T[],
+        items: readonly TInsertType[],
         keysOrOptions?: readonly IndexableType[] | BulkOptions,
         maybeOptions?: BulkOptions,
     ): NexiePromise<any> {
@@ -422,10 +445,18 @@ export class Table<T = any, TKey = IndexableType> {
             ? this._whereClause(indexed).equals(criteria[indexed] as IndexableType)
             : this.toCollection();
 
+        // Key comparison, not identity: a Date or an ArrayBuffer criterion has
+        // to match the equal value stored in the record, exactly as it would
+        // through an index. Anything that is not a valid key falls back to
+        // identity, which is the only meaning it can have.
         return base.filter((value) =>
-            remaining.every(
-                (path) => getByKeyPath(value, path) === criteria[path],
-            ),
+            remaining.every((path) => {
+                const actual = getByKeyPath(value, path);
+                const wanted = criteria[path];
+                return isValidKey(actual) && isValidKey(wanted)
+                    ? cmp(actual, wanted) === 0
+                    : actual === wanted;
+            }),
         );
     }
 
@@ -480,7 +511,7 @@ export class Table<T = any, TKey = IndexableType> {
         keyOrObject: TKey | T,
         changes:
             | UpdateSpec<T>
-            | ((value: T, ctx: { value: T | null }) => unknown),
+            | ((value: T, ctx: { value?: T | null }) => unknown),
     ): NexiePromise<number> {
         const key = this._keyOf(keyOrObject);
         if (key instanceof NexiePromise) return key;

@@ -27,29 +27,48 @@ export class PropModification {
         this.replacePrefix = spec.replacePrefix;
     }
 
-    /** Apply this modification to an existing value. */
+    /**
+     * Apply this modification to an existing value.
+     *
+     * Same arithmetic as Dexie, since these are the semantics documented for
+     * `add`/`remove` and code was written against them: an array term is
+     * concatenated onto the existing array (or onto nothing) and the result
+     * sorted; a numeric term is added to `Number(value)`, treating anything
+     * non-numeric as 0; anything else is a TypeError rather than a guess.
+     */
     execute(value: unknown): unknown {
         if (this.add !== undefined) {
-            const addend = this.add;
-            if (isArray(value)) {
-                return [...value, ...(isArray(addend) ? addend : [addend])];
+            const term = this.add;
+            if (isArray(term)) {
+                return [...(isArray(value) ? value : []), ...term].sort();
             }
-            if (typeof value === 'number') return value + (addend as number);
-            if (typeof value === 'string') return value + String(addend);
-            if (value === undefined) {
-                return isArray(addend) ? [...addend] : addend;
+            if (typeof term === 'number') return (Number(value) || 0) + term;
+            if (typeof term === 'bigint') {
+                try {
+                    return BigInt(value as string) + term;
+                } catch {
+                    return BigInt(0) + term;
+                }
             }
-            return value;
+            throw new TypeError(`Invalid term ${String(term)}`);
         }
 
         if (this.remove !== undefined) {
-            const removed = this.remove;
-            if (isArray(value)) {
-                const targets = isArray(removed) ? removed : [removed];
-                return value.filter((item) => !targets.includes(item));
+            const subtrahend = this.remove;
+            if (isArray(subtrahend)) {
+                return isArray(value)
+                    ? value.filter((item) => !subtrahend.includes(item)).sort()
+                    : [];
             }
-            if (typeof value === 'number') return value - (removed as number);
-            return value;
+            if (typeof subtrahend === 'number') return Number(value) - subtrahend;
+            if (typeof subtrahend === 'bigint') {
+                try {
+                    return BigInt(value as string) - subtrahend;
+                } catch {
+                    return BigInt(0) - subtrahend;
+                }
+            }
+            throw new TypeError(`Invalid subtrahend ${String(subtrahend)}`);
         }
 
         if (this.replacePrefix) {
@@ -63,13 +82,11 @@ export class PropModification {
     }
 }
 
-export function add(value: number | IndexableType[] | IndexableType): PropModification {
+export function add(value: number | bigint | IndexableType[]): PropModification {
     return new PropModification({ add: value });
 }
 
-export function remove(
-    value: number | IndexableType[] | IndexableType,
-): PropModification {
+export function remove(value: number | bigint | IndexableType[]): PropModification {
     return new PropModification({ remove: value });
 }
 

@@ -18,6 +18,7 @@ import FakeDOMStringList from "./lib/FakeDOMStringList.ts";
 import Index from "./lib/Index.ts";
 import validateKeyPath from "./lib/validateKeyPath.ts";
 import valueToKey from "./lib/valueToKey.ts";
+import validateCursorDirection from "./lib/validateCursorDirection.ts";
 import valueToKeyRange from "./lib/valueToKeyRange.ts";
 import { getKeyPath } from "./lib/getKeyPath.ts";
 import extractGetAllOptions from "./lib/extractGetAllOptions.ts";
@@ -65,6 +66,22 @@ const buildRecordAddPut = (
         }
     }
 
+    // https://w3c.github.io/IndexedDB/#add-or-put -- the out-of-line key
+    // checks (steps 6 and 7) come BEFORE the clone (step 8), so a value that
+    // cannot be cloned reports the key problem first when it has one, and the
+    // value's getters do not run for a call that was going to fail anyway.
+    if (
+        objectStore.keyPath === null &&
+        objectStore._rawObjectStore.keyGenerator === null &&
+        key === undefined
+    ) {
+        throw new DataError();
+    }
+
+    if (key !== undefined) {
+        key = valueToKey(key);
+    }
+
     const clone = cloneValueForInsertion(value, objectStore.transaction);
 
     if (objectStore.keyPath !== null) {
@@ -79,18 +96,6 @@ const buildRecordAddPut = (
                 throw new DataError();
             }
         }
-    }
-
-    if (
-        objectStore.keyPath === null &&
-        objectStore._rawObjectStore.keyGenerator === null &&
-        key === undefined
-    ) {
-        throw new DataError();
-    }
-
-    if (key !== undefined) {
-        key = valueToKey(key);
     }
 
     return {
@@ -391,7 +396,9 @@ class FDBObjectStore {
                 count = enforceRange(options.count, "unsigned long");
             }
             if (options.direction !== undefined) {
-                direction = options.direction;
+                direction = validateCursorDirection(options.direction) as
+                    | "prev"
+                    | "next";
             }
         }
 
@@ -430,6 +437,7 @@ class FDBObjectStore {
         range?: FDBKeyRange | Key,
         direction?: FDBCursorDirection,
     ) {
+        direction = validateCursorDirection(direction);
         confirmActiveTransaction(this);
 
         if (range === null) {
@@ -458,6 +466,7 @@ class FDBObjectStore {
         range?: FDBKeyRange | Key,
         direction?: FDBCursorDirection,
     ) {
+        direction = validateCursorDirection(direction);
         confirmActiveTransaction(this);
 
         if (range === null) {

@@ -132,15 +132,23 @@ describe("auto", () => {
         }
 
         clearGlobals();
-        const built = await import(new URL("index.js", dist).href);
-        await import(new URL("auto.js", dist).href);
+        try {
+            const built = await import(new URL("index.js", dist).href);
+            await import(new URL("auto.js", dist).href);
 
-        for (const prop of props) {
-            assert.equal(
-                (globalThis as any)[prop],
-                built[prop],
-                `${prop} identity across dist/auto.js and dist/index.js`,
-            );
+            for (const prop of props) {
+                assert.equal(
+                    (globalThis as any)[prop],
+                    built[prop],
+                    `${prop} identity across dist/auto.js and dist/index.js`,
+                );
+            }
+        } finally {
+            // Put the SOURCE classes back. Under a shared-process runner the
+            // built copies would otherwise stay installed for every file that
+            // runs after this one, and `instanceof` against the source classes
+            // would fail there for a reason nowhere near the failing test.
+            installGlobals();
         }
     });
 });

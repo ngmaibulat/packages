@@ -19,7 +19,11 @@ import type {
     Value,
 } from "./lib/types.ts";
 import type FDBRequest from "./FDBRequest.ts";
-import { assertInternalConstruction, defineInterface } from "./lib/webidl.ts";
+import {
+    assertInternalConstruction,
+    constructInternally,
+    defineInterface,
+} from "./lib/webidl.ts";
 
 const getEffectiveObjectStore = (cursor: FDBCursor) => {
     if (cursor.source instanceof FDBObjectStore) {
@@ -29,9 +33,16 @@ const getEffectiveObjectStore = (cursor: FDBCursor) => {
 };
 
 // This takes a key range, a list of lower bounds, and a list of upper bounds and combines them all into a single key
-// range. It does not handle gt/gte distinctions, because it doesn't really matter much anyway, since for next/prev
-// cursor iteration it'd also have to look at values to be precise, which would be complicated. This should get us 99%
-// of the way there.
+// range for the record scan. It does not handle gt/gte distinctions, because it doesn't really matter much anyway,
+// since for next/prev cursor iteration it'd also have to look at values to be precise, which would be complicated.
+// The per-record checks in _iterate below stay authoritative; this only decides where the scan STARTS.
+//
+// The bounds are combined by tightening: the largest of the lower bounds and the smallest of the upper bounds. Every
+// record the cursor still has to visit going forward has key >= its current position (and >= a `continue(key)`
+// target), so the scan may begin there. An earlier version kept the SMALLEST lower bound instead -- the range's own
+// start -- so every `continue()` on a cursor over an explicit range rescanned from the beginning of the range and
+// then filtered out everything already visited: O(n^2) over the range, 44x slower than the unbounded case at 4,000
+// records.
 const makeKeyRange = (
     range: FDBKeyRange,
     lowers: (Key | undefined)[],
@@ -41,13 +52,13 @@ const makeKeyRange = (
     let lower = range !== undefined ? range.lower : undefined;
     let upper = range !== undefined ? range.upper : undefined;
 
-    // Augment with values from lowers and uppers
+    // Tighten with values from lowers and uppers
     for (const lowerTemp of lowers) {
         if (lowerTemp === undefined) {
             continue;
         }
 
-        if (lower === undefined || cmpKeys(lower, lowerTemp) === 1) {
+        if (lower === undefined || cmpKeys(lowerTemp, lower) === 1) {
             lower = lowerTemp;
         }
     }
@@ -56,12 +67,20 @@ const makeKeyRange = (
             continue;
         }
 
-        if (upper === undefined || cmpKeys(upper, upperTemp) === -1) {
+        if (upper === undefined || cmpKeys(upperTemp, upper) === -1) {
             upper = upperTemp;
         }
     }
 
     if (lower !== undefined && upper !== undefined) {
+        // A position past the range's end (a `continue(key)` beyond it, say)
+        // leaves nothing to scan. FDBKeyRange.bound() would throw DataError on
+        // lower > upper, so build the empty range directly.
+        if (cmpKeys(lower, upper) === 1) {
+            return constructInternally(
+                () => new FDBKeyRange(lower, upper, true, true),
+            );
+        }
         return FDBKeyRange.bound(lower, upper);
     }
     if (lower !== undefined) {
@@ -294,11 +313,9 @@ class FDBCursor {
             }
 
             // "this instanceof FDBCursorWithValue" would be better and not require (this as any), but causes runtime
-            // error due to circular dependency.
-            if (
-                !this._keyOnly &&
-                this.toString() === "[object IDBCursorWithValue]"
-            ) {
+            // error due to circular dependency. A value cursor is one that was constructed with `_keyOnly` false,
+            // which is what update()/delete() below already key off.
+            if (!this._keyOnly) {
                 (this as any)._value = undefined;
             }
             result = null;
@@ -310,18 +327,12 @@ class FDBCursor {
             this._key = foundRecord.key;
             if (sourceIsObjectStore) {
                 this._primaryKey = structuredClone(foundRecord.key);
-                if (
-                    !this._keyOnly &&
-                    this.toString() === "[object IDBCursorWithValue]"
-                ) {
+                if (!this._keyOnly) {
                     (this as any)._value = structuredClone(foundRecord.value);
                 }
             } else {
                 this._primaryKey = structuredClone(foundRecord.value);
-                if (
-                    !this._keyOnly &&
-                    this.toString() === "[object IDBCursorWithValue]"
-                ) {
+                if (!this._keyOnly) {
                     if (this.source instanceof FDBObjectStore) {
                         // Can't use sourceIsObjectStore because TypeScript
                         throw new Error("This should never happen");

@@ -12,6 +12,9 @@ interface Person {
     city: string;
     visits: number;
     tags: string[];
+    score?: number | unknown[];
+    labels?: string[];
+    when?: Date;
 }
 
 const PEOPLE: Person[] = [
@@ -321,15 +324,29 @@ suite('Table: update, upsert and bulkUpdate', () => {
         const alice = (await people.where('name').equals('Alice').first())!;
         await people.update(alice.id!, {
             visits: add(5),
-            tags: add('newtag'),
+            tags: add(['newtag']),
         });
 
         const updated = await people.get(alice.id!);
         assert.strictEqual(updated?.visits, 6);
-        assert.include(updated?.tags ?? [], 'newtag');
+        // Array terms are concatenated and the result sorted, as in Dexie.
+        assert.deepEqual(updated?.tags, ['dev', 'newtag']);
 
-        await people.update(alice.id!, { tags: remove('newtag') });
-        assert.notInclude((await people.get(alice.id!))?.tags ?? [], 'newtag');
+        await people.update(alice.id!, { tags: remove(['newtag']) });
+        assert.deepEqual((await people.get(alice.id!))?.tags, ['dev']);
+    });
+
+    test('PropModification arithmetic matches Dexie', async () => {
+        const alice = (await people.where('name').equals('Alice').first())!;
+        // A numeric term on a missing or non-numeric value counts from 0.
+        await people.update(alice.id!, { score: add(3) });
+        assert.strictEqual((await people.get(alice.id!))?.score, 3);
+        // An array term on a missing value creates the array.
+        await people.update(alice.id!, { labels: add(['b', 'a']) });
+        assert.deepEqual((await people.get(alice.id!))?.labels, ['a', 'b']);
+        // Removing from a non-array yields an empty array.
+        await people.update(alice.id!, { score: remove(['x']) });
+        assert.deepEqual((await people.get(alice.id!))?.score, []);
     });
 
     test('upsert reports whether the record existed', async () => {
@@ -411,5 +428,62 @@ suite('cmp', () => {
         // virtual-index range rule depends on.
         assert.isBelow(cmp(['x'], ['x', 1]), 0);
         assert.isAbove(cmp(['x', 1], ['x']), 0);
+    });
+});
+
+suite('Collection: reuse', () => {
+    test('a distinct() collection can be read more than once', async () => {
+        const devs = people.where('tags').anyOf(['dev', 'ops']).distinct();
+        const first = await devs.toArray();
+        const second = await devs.toArray();
+        assert.deepEqual(
+            second.map((p) => p.name),
+            first.map((p) => p.name),
+        );
+        assert.lengthOf(first, 4);
+    });
+
+    test('first() on a distinct() collection does not eat a record', async () => {
+        const devs = people.where('tags').anyOf(['dev', 'ops']).distinct();
+        assert.equal((await devs.first())!.name, 'Alice');
+        assert.lengthOf(await devs.toArray(), 4);
+        assert.equal(await devs.count(), 4);
+    });
+});
+
+suite('Collection: modify deletion idioms', () => {
+    test('`delete ref.value` deletes the record, like `ref.value = null`', async () => {
+        const modified = await people
+            .toCollection()
+            .modify((person, ref) => {
+                if (person.city === 'Oslo') delete ref.value;
+            });
+        assert.equal(modified, 5);
+        assert.deepEqual(
+            (await people.toArray()).map((p) => p.city).sort(),
+            ['Bergen', 'Bergen', 'Tromso'],
+        );
+    });
+});
+
+suite('Table: where with non-primitive criteria', () => {
+    test('an unindexed Date criterion matches by key, not identity', async () => {
+        const when = new Date(2020, 0, 1);
+        await people.where('name').equals('Alice').modify({ when });
+        const found = await people
+            .where({ name: 'Alice', when: new Date(2020, 0, 1) })
+            .toArray();
+        assert.lengthOf(found, 1);
+        assert.lengthOf(
+            await people.where({ name: 'Alice', when: new Date(2021, 0, 1) }).toArray(),
+            0,
+        );
+    });
+
+    test('an unindexed array criterion matches by key', async () => {
+        assert.lengthOf(
+            await people.where({ city: 'Tromso', tags: ['dev', 'ops'] }).toArray(),
+            1,
+        );
     });
 });

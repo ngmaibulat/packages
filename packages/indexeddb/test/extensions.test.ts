@@ -5,6 +5,7 @@ import { assert as typeAssert, type IsExact } from 'conditional-type-checks';
 import {
   openDB,
   ignoreConstraints,
+  unwrap,
   type DBSchema,
   type IDBPDatabase,
   type IDBPStoreRecord,
@@ -344,6 +345,52 @@ suite('ignoreConstraints', () => {
       TypeError,
       /IndexedDB operation/,
     );
+  });
+
+  test('refuses to be called after the operation has already failed', async () => {
+    db = await freshDB();
+
+    const tx = db.transaction('books', 'readwrite');
+    const operation = tx.store.add({ id: 1, title: 'Dupe', author: 'Dupe' });
+    // Too late: by the time this rejects, the ConstraintError has reached the
+    // transaction and aborted it. Swallowing it now would report success for
+    // a write that took the transaction down.
+    await operation.catch(() => {});
+    assert.throws(() => ignoreConstraints(operation), TypeError, /same turn/);
+    await tx.done.catch(() => {});
+  });
+
+  test('leaves no listener behind once the request has settled', async () => {
+    db = await freshDB();
+
+    const tx = db.transaction('books', 'readwrite');
+    const operation = tx.store.add({ id: 4, title: 'Book D', author: 'D' });
+    const request = unwrap(operation);
+    // The impl keeps its listeners in a list, so count them.
+    const listeners = (request as unknown as { _listeners: unknown[] })._listeners;
+    const before = listeners.length;
+    await ignoreConstraints(operation);
+    await tx.done;
+    assert.strictEqual(listeners.length, before, 'listeners removed on settle');
+  });
+
+  test('is scoped to the one operation, not the whole transaction', async () => {
+    db = await freshDB();
+
+    const tx = db.transaction('books', 'readwrite');
+    const ignored = ignoreConstraints(
+      tx.store.add({ id: 1, title: 'Dupe', author: 'Dupe' }),
+    );
+    // A second duplicate on the same store, NOT wrapped: this one still
+    // aborts the transaction.
+    const notIgnored = tx.store.add({ id: 2, title: 'Dupe', author: 'Dupe' });
+    assert.strictEqual(await ignored, undefined);
+    let caught: unknown;
+    await notIgnored.catch((error) => {
+      caught = error;
+    });
+    assert.strictEqual((caught as DOMException).name, 'ConstraintError');
+    await tx.done.catch(() => {});
   });
 });
 

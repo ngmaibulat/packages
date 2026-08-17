@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { defineConfig } from "tsdown";
 
@@ -18,9 +19,10 @@ export default defineConfig({
     // Single entry. src/index.ts is the composition root: it re-exports the
     // public surface from entry.ts and pulls database-extras and async-iterators
     // in for their side effects -- each installs proxy traps via replaceTraps.
-    // That is why package.json must NOT declare `sideEffects: false`: a bundler
-    // taking that at its word could drop those imports and silently remove the
-    // db.get shortcuts and the async iterators.
+    // That is why package.json declares `"sideEffects": true` explicitly -- a
+    // bundler told `false` could drop those imports and silently remove the
+    // db.get shortcuts and the async iterators. Stated in the manifest rather
+    // than only here, so the diff that would break it is self-evidently wrong.
     //
     // src/nexie.ts is the second, high-level root (the `./nexie` subpath). The
     // two graphs are deliberately DISJOINT -- nothing under src/nexie/ imports
@@ -50,4 +52,11 @@ export default defineConfig({
 
     publint: true,
     attw: { profile: "esm-only" },
+
+    // Gates, not conveniences: the low-level bundle's recorded digest and the
+    // Nexie version substitution. See scripts/postbuild.mjs. execFileSync so
+    // that a non-zero exit fails the build.
+    onSuccess: async () => {
+        execFileSync("node", ["scripts/postbuild.mjs"], { stdio: "inherit" });
+    },
 });

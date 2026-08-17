@@ -250,3 +250,43 @@ suite('NexiePromise.follow', () => {
         assert.match(String((caught as Error).message), /sync boom/);
     });
 });
+
+suite('NexiePromise statics: empty and edge inputs', () => {
+    test('any of an empty list rejects with an AggregateError', async () => {
+        let caught: unknown;
+        await NexiePromise.any([]).catch((e) => {
+            caught = e;
+        });
+        assert.equal((caught as Error).name, 'AggregateError');
+        assert.deepEqual((caught as { errors: unknown[] }).errors, []);
+    });
+
+    test('allSettled of an empty list resolves to an empty list', async () => {
+        assert.deepEqual(await NexiePromise.allSettled([]), []);
+    });
+
+    test('any resolves with the first fulfilment', async () => {
+        assert.equal(
+            await NexiePromise.any([fails(new Error('no')), later('yes')]),
+            'yes',
+        );
+    });
+});
+
+suite('NexiePromise: rejection mapping', () => {
+    test('a DOMException adopted from a native promise is still mapped', async () => {
+        // The adoption path (`resolve(nativePromise)`) rejects through the same
+        // mapper as everything else, so `instanceof` works however the error
+        // arrived.
+        const native = Promise.reject(
+            new DOMException('taken', 'ConstraintError'),
+        );
+        let caught: unknown;
+        await NexiePromise.resolve(native).catch((e) => {
+            caught = e;
+        });
+        assert.instanceOf(caught, exceptions['Constraint']!);
+        assert.instanceOf(caught, NexieError);
+        assert.equal((caught as Error).name, 'ConstraintError');
+    });
+});

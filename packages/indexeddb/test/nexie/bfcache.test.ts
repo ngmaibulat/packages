@@ -159,3 +159,24 @@ suite('bfcache', () => {
         );
     });
 });
+
+suite('bfcache: listener lifetime', () => {
+    test('listeners are attached on open and removed on close', async () => {
+        page = installFakePage();
+
+        const db = new Nexie(freshName('bfcache-life'));
+        opened.push(db);
+        db.version(1).stores({ items: '++id' });
+        assert.strictEqual(page.listenerCount(), 0, 'nothing before open');
+
+        await db.open();
+        assert.strictEqual(page.listenerCount(), 2);
+
+        db.close();
+        assert.strictEqual(page.listenerCount(), 0, 'nothing after close');
+
+        // And a static delete of a throwaway instance leaves nothing behind.
+        await Nexie.delete(db.name);
+        assert.strictEqual(page.listenerCount(), 0);
+    });
+});

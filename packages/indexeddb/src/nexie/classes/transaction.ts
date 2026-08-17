@@ -1,4 +1,5 @@
 import { exceptions } from '../errors/errors.ts';
+import { Events, type NexieEventSet } from '../functions/events.ts';
 import { NexiePromise } from '../zone/nexie-promise.ts';
 import { getZone, runInZone, type Zone } from '../zone/zone.ts';
 import type { Nexie } from './nexie.ts';
@@ -33,6 +34,14 @@ export class Transaction {
     readonly mode: IDBTransactionMode;
     readonly storeNames: string[];
     readonly parent: Transaction | undefined;
+
+    /**
+     * `trans.on('complete' | 'error' | 'abort', fn)`. `complete` fires with
+     * no arguments once the transaction has committed, `error` with the reason
+     * when it has failed, `abort` with the IDB event when the underlying
+     * transaction aborted -- the same three Dexie has.
+     */
+    readonly on: NexieEventSet;
 
     /** True while the underlying IDB transaction can still accept requests. */
     active = false;
@@ -113,9 +122,10 @@ export class Transaction {
      */
     _mutatedParts: Record<string, unknown> | undefined;
 
-    /** Set while `waitFor` is holding the transaction open. */
-    _waitingFor: NexiePromise<unknown> | undefined;
-    private _waitingQueue: (() => void)[] | undefined;
+    /** How many `waitFor` calls are holding the transaction open right now. */
+    private _outstandingWaits = 0;
+    /** Continuations to deliver from the next spin of the keep-alive request. */
+    private _waitingQueue: (() => void)[] = [];
 
     constructor(
         db: Nexie,
@@ -127,6 +137,11 @@ export class Transaction {
         this.mode = mode;
         this.storeNames = storeNames;
         this.parent = parent;
+
+        this.on = Events(this);
+        this.on.addEventType('complete');
+        this.on.addEventType('error');
+        this.on.addEventType('abort');
 
         const { promise, resolve, reject } = NexiePromise.withResolvers<void>();
         this._completion = promise;
@@ -178,11 +193,12 @@ export class Transaction {
             this.active = false;
             this._settleCompletion(null);
         };
-        idb.onabort = () => {
+        idb.onabort = (event) => {
             this.active = false;
             this._settleCompletion(
                 idb.error ?? new AbortError('Transaction aborted'),
             );
+            this.on['abort']!.fire(event);
         };
         idb.onerror = (event) => {
             // The failing request already rejected its own promise. Swallow the
@@ -199,9 +215,11 @@ export class Transaction {
         this._completionSettled = true;
         if (error === null) {
             this._resolveCompletion();
+            this.on['complete']!.fire();
         } else {
             this._completionError = error;
             this._rejectCompletion(error);
+            this.on['error']!.fire(error);
         }
     }
 
@@ -325,37 +343,32 @@ export class Transaction {
         const root = this._root();
         const awaited = NexiePromise.resolve(promise);
 
-        if (root._waitingFor) {
-            // Already spinning: chain onto the existing wait.
-            root._waitingFor = root._waitingFor.then(() => awaited);
-        } else {
-            root._waitingFor = awaited as NexiePromise<unknown>;
-            root._waitingQueue = [];
-
+        // Counted, not flagged: several waits can overlap, and the spin must
+        // outlive the LAST of them. An earlier version tracked "the" wait as a
+        // single promise and cleared it from whichever wait settled first --
+        // which stopped the spin while another wait was still outstanding, and
+        // that wait's continuation then sat in the queue forever.
+        if (root._outstandingWaits++ === 0) {
             const store = root.idbtrans.objectStore(root.storeNames[0]!);
             const spin = (): void => {
-                while (root._waitingQueue!.length > 0) {
-                    root._waitingQueue!.shift()!();
+                while (root._waitingQueue.length > 0) {
+                    root._waitingQueue.shift()!();
                 }
-                if (root._waitingFor) {
+                if (root._outstandingWaits > 0) {
                     store.get(-Infinity).onsuccess = spin;
                 }
             };
             spin();
         }
 
-        const waitPromise = root._waitingFor;
-
         return new NexiePromise<T>((resolve, reject) => {
             awaited
                 .then(
-                    (value) => root._waitingQueue!.push(() => resolve(value)),
-                    (error) => root._waitingQueue!.push(() => reject(error)),
+                    (value) => root._waitingQueue.push(() => resolve(value)),
+                    (error) => root._waitingQueue.push(() => reject(error)),
                 )
                 .finally(() => {
-                    if (root._waitingFor === waitPromise) {
-                        root._waitingFor = undefined;
-                    }
+                    root._outstandingWaits--;
                 });
         });
     }
@@ -375,9 +388,11 @@ export class Transaction {
     }
 
     /** Transaction-bound tables, memoized so `trans.friends` is stable. */
-    table<T = any, TKey = any>(tableName: string): Table<T, TKey> {
+    table<T = any, TKey = any, TInsertType = T>(
+        tableName: string,
+    ): Table<T, TKey, TInsertType> {
         const memoized = this._memoizedTables.get(tableName);
-        if (memoized) return memoized as Table<T, TKey>;
+        if (memoized) return memoized as Table<T, TKey, TInsertType>;
 
         if (!this.storeNames.includes(tableName)) {
             throw new NotFoundError(
@@ -387,6 +402,6 @@ export class Transaction {
 
         const table = this.db._createTable(tableName, this);
         this._memoizedTables.set(tableName, table);
-        return table as Table<T, TKey>;
+        return table as Table<T, TKey, TInsertType>;
     }
 }

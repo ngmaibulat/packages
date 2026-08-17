@@ -1,10 +1,17 @@
 import FDBRecord from "../FDBRecord.ts";
+import { cmpKeys } from "./cmp.ts";
 import { ConstraintError } from "./errors.ts";
 import extractKey from "./extractKey.ts";
 import RecordStore from "./RecordStore.ts";
 import valueToKey from "./valueToKey.ts";
 import type ObjectStore from "./ObjectStore.ts";
-import type { FDBCursorDirection, Key, KeyPath, Record } from "./types.ts";
+import type {
+    FDBCursorDirection,
+    Key,
+    KeyPath,
+    Record,
+    Value,
+} from "./types.ts";
 import type FDBTransaction from "../FDBTransaction.ts";
 import type FDBKeyRange from "../FDBKeyRange.ts";
 import { constructInternally } from "./webidl.ts";
@@ -111,11 +118,10 @@ class Index {
             records.push(
                 constructInternally(
                     () =>
+                        // getKey/getValue already hand back clones.
                         new FDBRecord(
                             structuredClone(record.key),
-                            structuredClone(
-                                this.rawObjectStore.getKey(record.value),
-                            ),
+                            this.rawObjectStore.getKey(record.value),
                             this.rawObjectStore.getValue(record.value),
                         ),
                 ),
@@ -128,15 +134,20 @@ class Index {
         return records;
     }
 
-    // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#dfn-steps-for-storing-a-record-into-an-object-store (step 7)
-    public storeRecord(newRecord: Record) {
+    /**
+     * The index keys a value contributes: one entry, or one per element for a
+     * multiEntry index, or none when the value has no valid key at this index's
+     * key path. Shared by store and delete so the two always agree on which
+     * entries a record owns.
+     */
+    private _indexKeysFor(value: Value): Key[] | undefined {
         let indexKey;
         try {
-            indexKey = extractKey(this.keyPath, newRecord.value).key;
+            indexKey = extractKey(this.keyPath, value).key;
         } catch (err) {
             if (err.name === "DataError") {
                 // Invalid key is not an actual error, just means we do not store an entry in this index
-                return;
+                return undefined;
             }
 
             throw err;
@@ -144,56 +155,68 @@ class Index {
 
         if (!this.multiEntry || !Array.isArray(indexKey)) {
             try {
-                valueToKey(indexKey);
+                return [valueToKey(indexKey)];
             } catch (e) {
-                return;
+                return undefined;
             }
-        } else {
-            // remove any elements from index key that are not valid keys and remove any duplicate elements from index
-            // key such that only one instance of the duplicate value remains.
-            const keep = [];
-            for (const part of indexKey) {
-                if (keep.indexOf(part) < 0) {
-                    try {
-                        keep.push(valueToKey(part));
-                    } catch (err) {
-                        /* Do nothing */
-                    }
-                }
-            }
-            indexKey = keep;
         }
 
-        if (!this.multiEntry || !Array.isArray(indexKey)) {
-            if (this.unique) {
-                const existingRecord = this.records.get(indexKey);
+        // remove any elements from index key that are not valid keys and remove any duplicate elements from index
+        // key such that only one instance of the duplicate value remains. Duplicates are decided by key comparison,
+        // as the spec says, not by identity: two equal Dates or two equal arrays are one entry.
+        const keep: Key[] = [];
+        for (const part of indexKey) {
+            let converted;
+            try {
+                converted = valueToKey(part);
+            } catch (err) {
+                continue;
+            }
+            if (!keep.some((existing) => cmpKeys(existing, converted) === 0)) {
+                keep.push(converted);
+            }
+        }
+        return keep;
+    }
+
+    // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#dfn-steps-for-storing-a-record-into-an-object-store (step 7)
+    public storeRecord(newRecord: Record) {
+        const indexKeys = this._indexKeysFor(newRecord.value);
+        if (indexKeys === undefined) {
+            return;
+        }
+
+        if (this.unique) {
+            for (const individualIndexKey of indexKeys) {
+                const existingRecord = this.records.get(individualIndexKey);
                 if (existingRecord) {
                     throw new ConstraintError();
                 }
             }
-        } else {
-            if (this.unique) {
-                for (const individualIndexKey of indexKey) {
-                    const existingRecord = this.records.get(individualIndexKey);
-                    if (existingRecord) {
-                        throw new ConstraintError();
-                    }
-                }
-            }
         }
 
-        if (!this.multiEntry || !Array.isArray(indexKey)) {
+        for (const individualIndexKey of indexKeys) {
             this.records.put({
-                key: indexKey,
+                key: individualIndexKey,
                 value: newRecord.key,
             });
-        } else {
-            for (const individualIndexKey of indexKey) {
-                this.records.put({
-                    key: individualIndexKey,
-                    value: newRecord.key,
-                });
-            }
+        }
+    }
+
+    /**
+     * Remove the entries `record` contributed. Recomputing the record's index
+     * keys and deleting exactly those entries is O(log n) per entry; the
+     * previous approach scanned every entry in the index for ones pointing at
+     * the primary key, which made deleting a store's records quadratic in its
+     * size the moment it had an index.
+     */
+    public deleteRecord(record: Record) {
+        const indexKeys = this._indexKeysFor(record.value);
+        if (indexKeys === undefined) {
+            return;
+        }
+        for (const individualIndexKey of indexKeys) {
+            this.records.deleteByKeyAndValue(individualIndexKey, record.key);
         }
     }
 

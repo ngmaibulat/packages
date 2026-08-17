@@ -39,7 +39,28 @@ export interface TableSchema {
     /** Lookup by index name, and by keyPath for compound indexes. */
     idxByName: Record<string, IndexSpec>;
     mappedClass?: (new (...args: any[]) => unknown) | undefined;
+    /** The `reading` hook installed by `mapToClass`, so a re-map can drop it. */
+    mappedReadHook?: ((value: any) => any) | undefined;
     readHook?: ((value: any) => any) | undefined;
+    /**
+     * The table's CRUD hook set, attached lazily by the hooks middleware. Typed
+     * loosely here to keep the schema module at the bottom of the graph; it is
+     * always a `TableHooks`.
+     */
+    hooks?: unknown;
 }
+
+/**
+ * The per-table state that lives on the schema object but is not part of the
+ * declaration: hooks, `mapToClass`. `Version.stores()` re-parses every version
+ * from scratch, and these have to survive that -- a hook registered before a
+ * later `db.version(n)` call is still a hook.
+ */
+export const CARRIED_SCHEMA_KEYS = [
+    'mappedClass',
+    'mappedReadHook',
+    'readHook',
+    'hooks',
+] as const;
 
 export type DbSchema = Record<string, TableSchema>;

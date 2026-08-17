@@ -2,13 +2,11 @@
 import { describe, test } from "node:test";
 import path from "node:path";
 import * as fs from "node:fs";
-import { readFileSync, writeFileSync } from "node:fs";
 import { parse, stringify } from "smol-toml";
 import { glob } from "glob";
 import { runTestFile } from "./runTestFile.js";
 
 const generateManifests = process.env.GENERATE_MANIFESTS;
-const writeToReadme = process.env.WRITE_TO_README;
 
 // Resolved from this file rather than the working directory. Upstream
 // hardcoded a cwd-relative path, so the suite only ran from the package
@@ -124,11 +122,13 @@ for (const absFilename of filenames) {
         .split("\n")
         .filter((_) => _.includes("testResult"))
         .map((_) => JSON.parse(_));
+    // A duplicate result is a verdict, not a throw: thrown from here it would
+    // abort registration for every file after this one, which is exactly the
+    // failure mode the try/catch above exists to prevent.
+    const duplicates = [];
     for (const resultLine of resultLines) {
         for (const name of Object.keys(resultLine.testResult)) {
-            if (name in results) {
-                throw new Error(`Duplicate test results for ${name}`);
-            }
+            if (name in results) duplicates.push(name);
         }
         Object.assign(results, resultLine.testResult);
     }
@@ -139,6 +139,13 @@ for (const absFilename of filenames) {
     // below has to observe every verdict -- test callbacks run long after this
     // loop iteration, so anything they wrote would come too late.
     const verdicts = [];
+
+    for (const name of duplicates) {
+        verdicts.push({
+            name: `no duplicate results for ${name}`,
+            error: new Error(`Duplicate test results for ${name}`),
+        });
+    }
 
     if (!Object.keys(results).length && !generatedManifest.expectTimeout) {
         verdicts.push({
@@ -178,6 +185,34 @@ for (const absFilename of filenames) {
         }
 
         verdicts.push({ name: `${name}${friendlyText}`, error });
+    }
+
+    // A file that may time out reports whatever it printed before it was
+    // killed, so the number of verdicts would vary run to run -- and with it
+    // the suite's total, which the Node/Bun parity check treats as a signal.
+    // The manifest lists the file's tests (`expectedTests`), and any name that
+    // did not report is registered anyway, so the count is fixed.
+    const expectedTests = expectedManifest?.contents?.expectedTests ?? [];
+    for (const name of expectedTests) {
+        if (name in results) continue;
+        const tolerated =
+            expectedManifest?.contents?.expectTimeout === "UNSTABLE" ||
+            expectedManifest?.contents?.expectTimeout === true;
+        verdicts.push({
+            name: `${name} (not reported before timeout)`,
+            error: tolerated
+                ? null
+                : new Error(`Expected a result for "${name}" but got none`),
+        });
+    }
+    if (
+        generateManifests &&
+        (generatedManifest.expectTimeout ||
+            expectedManifest?.contents?.expectTimeout)
+    ) {
+        generatedManifest.expectedTests = [
+            ...new Set([...expectedTests, ...Object.keys(results)]),
+        ].sort();
     }
 
     let timingError = null;
@@ -237,28 +272,4 @@ process.on("beforeExit", () => {
     console.log(`Expected timeouts: ${numExpectedTimeouts}`);
     console.log(`Unstable tests: ${numUnstableTests}`);
     console.log(`Passed tests: ${numPassedTests}`);
-
-    // if WRITE_TO_README is set, then update the readme with the results
-    if (writeToReadme) {
-        const pkgJsonPath = path.join(
-            import.meta.dirname,
-            "../../../package.json",
-        );
-        const { version } = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-
-        const readmePath = path.join(import.meta.dirname, "../../README.md");
-        const readme = readFileSync(readmePath, "utf-8");
-        const total = parseInt(
-            readme.match(/<!-- wpt_results_total=(\d+) -->/)[1],
-            10,
-        );
-        const markdownRow = `| fake-indexeddb | ${version} | ${numPassedTests} | ${Math.round((1000 * numPassedTests) / total) / 10}% |`;
-        const newReadme = readme.replace(
-            /<!-- fakeindexeddb_wpt_results -->/,
-            markdownRow,
-        );
-        writeFileSync(readmePath, newReadme, "utf-8");
-        console.log("Wrote markdown to README:");
-        console.log(markdownRow);
-    }
 });

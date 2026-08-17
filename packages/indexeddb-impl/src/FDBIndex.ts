@@ -9,6 +9,7 @@ import {
 } from "./lib/errors.ts";
 import FakeDOMStringList from "./lib/FakeDOMStringList.ts";
 import valueToKey from "./lib/valueToKey.ts";
+import validateCursorDirection from "./lib/validateCursorDirection.ts";
 import valueToKeyRange from "./lib/valueToKeyRange.ts";
 import { getKeyPath } from "./lib/getKeyPath.ts";
 import extractGetAllOptions from "./lib/extractGetAllOptions.ts";
@@ -154,6 +155,7 @@ class FDBIndex {
         range?: FDBKeyRange | Key | null | undefined,
         direction?: FDBCursorDirection,
     ) {
+        direction = validateCursorDirection(direction);
         confirmActiveTransaction(this);
 
         if (range === null) {
@@ -183,6 +185,7 @@ class FDBIndex {
         range?: FDBKeyRange | Key | null | undefined,
         direction?: FDBCursorDirection,
     ) {
+        direction = validateCursorDirection(direction);
         confirmActiveTransaction(this);
 
         if (range === null) {
@@ -207,7 +210,10 @@ class FDBIndex {
         });
     }
 
-    public get(key: FDBKeyRange | Key) {
+    public get(key?: FDBKeyRange | Key) {
+        if (arguments.length === 0) {
+            throw new TypeError();
+        }
         confirmActiveTransaction(this);
 
         if (!(key instanceof FDBKeyRange)) {
@@ -247,7 +253,10 @@ class FDBIndex {
     }
 
     // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#widl-IDBIndex-getKey-IDBRequest-any-key
-    public getKey(key: FDBKeyRange | Key) {
+    public getKey(key?: FDBKeyRange | Key) {
+        if (arguments.length === 0) {
+            throw new TypeError();
+        }
         confirmActiveTransaction(this);
 
         if (!(key instanceof FDBKeyRange)) {
@@ -300,7 +309,9 @@ class FDBIndex {
                 count = enforceRange(options.count, "unsigned long");
             }
             if (options.direction !== undefined) {
-                direction = options.direction;
+                direction = validateCursorDirection(options.direction) as
+                    | "prev"
+                    | "next";
             }
         }
 

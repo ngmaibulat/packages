@@ -9,7 +9,7 @@ import { assertInternalConstruction, defineInterface } from "./lib/webidl.ts";
 
 class FDBRequest extends FakeEventTarget {
     public _result: any = null;
-    public _error: Error | null | undefined = null;
+    public _error: Error | null = null;
     public _source: FDBCursor | FDBIndex | FDBObjectStore | null = null;
     // readonly attribute, per IndexedDB.idl
     get source() {

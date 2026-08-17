@@ -3,6 +3,7 @@
     "version": "0.1.5",
     "description": "IndexedDB with usability: a small promise wrapper over the raw API, plus Nexie, a Dexie-compatible high-level API, from one package",
     "type": "module",
+    "sideEffects": true,
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {

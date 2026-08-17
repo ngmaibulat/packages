@@ -8,7 +8,7 @@ export function validateRequiredArguments(
         // imitate Firefox's error message
         throw new TypeError(
             `${methodName}: At least ${expectedNumArguments} ${expectedNumArguments === 1 ? "argument" : "arguments"} ` +
-                `required, but only ${arguments.length} passed`,
+                `required, but only ${numArguments} passed`,
         );
     }
 }

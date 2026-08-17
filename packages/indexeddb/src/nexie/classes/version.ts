@@ -2,7 +2,7 @@ import { parseStoresSpec } from './schema-parser.ts';
 import { promisableChain } from '../functions/chaining.ts';
 import type { Nexie } from './nexie.ts';
 import type { Transaction } from './transaction.ts';
-import type { DbSchema } from '../types/schema.ts';
+import { CARRIED_SCHEMA_KEYS, type DbSchema } from '../types/schema.ts';
 
 export interface VersionConfig {
     version: number;
@@ -47,6 +47,20 @@ export class Version {
             Object.assign(accumulated, version._cfg.storesSource);
             dbschema = version._cfg.dbschema = {};
             parseStoresSpec(accumulated, dbschema);
+        }
+
+        // Hooks and class mappings hang off the schema objects, and those were
+        // just rebuilt. Carry them over by table name, or a `hook('creating')`
+        // registered before a later `db.version(n).stores()` silently stops
+        // firing.
+        const previous = db._dbSchema;
+        for (const name of Object.keys(dbschema)) {
+            const before = previous[name];
+            if (!before) continue;
+            const after = dbschema[name] as unknown as Record<string, unknown>;
+            for (const key of CARRIED_SCHEMA_KEYS) {
+                if (before[key] !== undefined) after[key] = before[key];
+            }
         }
 
         db._dbSchema = dbschema;

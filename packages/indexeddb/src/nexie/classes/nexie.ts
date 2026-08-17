@@ -7,7 +7,12 @@ import { Version } from './version.ts';
 import { Collection } from './collection.ts';
 import { WhereClause } from './where-clause.ts';
 import { enterTransactionScope } from './transaction-scope.ts';
-import { Events, once as onceHelper, type NexieEventSet } from '../functions/events.ts';
+import {
+    Events,
+    once as onceHelper,
+    type NexieEvent,
+    type NexieEventSet,
+} from '../functions/events.ts';
 import {
     promisableChain,
     reverseStoppableChain,
@@ -33,11 +38,11 @@ const InvalidTableError = exceptions['InvalidTable']!;
 const DatabaseClosedError = exceptions['DatabaseClosed']!;
 const MissingAPIError = exceptions['MissingAPI']!;
 const OpenFailedError = exceptions['OpenFailed']!;
-const ReadOnlyError = exceptions['ReadOnly']!;
 const SubTransactionError = exceptions['SubTransaction']!;
 const InvalidArgumentError = exceptions['InvalidArgument']!;
 const NoSuchDatabaseError = exceptions['NoSuchDatabase']!;
 const UnsupportedError = exceptions['Unsupported']!;
+const UpgradeError = exceptions['Upgrade']!;
 
 export interface NexieDependencies {
     indexedDB: IDBFactory | null;
@@ -80,6 +85,12 @@ interface OpenState {
     isBeingOpened: boolean;
     openComplete: boolean;
     dbOpenError: unknown;
+    /**
+     * Non-null while `ready` subscribers are being fired. A subscriber added
+     * during that window is appended here and fired after the current batch,
+     * so it is neither dropped nor fired twice.
+     */
+    onReadyBeingFired: Array<(db: Nexie) => unknown> | null;
     openPromise: NexiePromise<Nexie> | null;
 }
 
@@ -90,6 +101,15 @@ type TableProps = Record<string, Table>;
 export type TableLike = string | Table<any, any>;
 
 export type TransactionScope<R> = (trans: Transaction) => R | PromiseLike<R>;
+
+function joinKeyPath(keyPath: string | string[] | null): string | null {
+    if (keyPath === null) return null;
+    return Array.isArray(keyPath) ? keyPath.join('+') : keyPath;
+}
+
+function describeKey(keyPath: string | null, auto: boolean): string {
+    return `${auto ? '++' : ''}${keyPath ?? '(outbound)'}`;
+}
 
 export class Nexie {
     readonly name: string;
@@ -106,6 +126,7 @@ export class Nexie {
         isBeingOpened: false,
         openComplete: false,
         dbOpenError: null,
+        onReadyBeingFired: null,
         openPromise: null,
     };
 
@@ -171,6 +192,7 @@ export class Nexie {
         // promise and the database waits for it before proceeding.
         this.on.addEventType('populate', { chain: promisableChain });
         this.on.addEventType('ready', { chain: promisableChain });
+        this._installReadySemantics();
         this.on.addEventType('blocked', { chain: reverseStoppableChain });
         this.on.addEventType('close', { chain: reverseStoppableChain });
         // A later subscriber returning false suppresses the default, which is
@@ -187,9 +209,21 @@ export class Nexie {
         this._middlewares.push(createHooksMiddleware());
         this._middlewares.push(createObservabilityMiddleware());
 
-        // A page frozen into the bfcache may have its connections closed by the
-        // browser and then be brought back with them apparently intact. Close
-        // deliberately and reopen on the way out, so the state is one we chose.
+        for (const addon of options?.addons ?? Nexie.addons) addon(this);
+    }
+
+    /**
+     * A page frozen into the bfcache may have its connections closed by the
+     * browser and then be brought back with them apparently intact. Close
+     * deliberately and reopen on the way out, so the state is one we chose.
+     *
+     * Wired while a connection is open (or owed a reopen) and unwired on
+     * close, rather than for the object's lifetime: `Nexie.delete(name)` is
+     * `new Nexie(name).delete()`, and a listener pair per throwaway instance
+     * is a leak on the page.
+     */
+    private _observeBfcache(): void {
+        if (this._unobserveBfcache) return;
         this._unobserveBfcache = observeBfcache({
             onHide: () => {
                 if (!this.idbdb) return;
@@ -207,8 +241,90 @@ export class Nexie {
                 });
             },
         });
+    }
 
-        for (const addon of options?.addons ?? Nexie.addons) addon(this);
+    private _unobserveBfcacheIfIdle(): void {
+        // Still owed a reopen: the pageshow listener is the only way back.
+        if (this._reopenAfterBfcache) return;
+        this._unobserveBfcache?.();
+        this._unobserveBfcache = null;
+    }
+
+    /**
+     * `db.on('ready', fn, bSticky?)` -- Dexie's semantics, which differ from
+     * a plain event in two ways that migrated code relies on:
+     *
+     * - Subscribing to an already-open database fires the subscriber right
+     *   away (asynchronously), rather than never. `autoOpen` means the first
+     *   query often opens the database before anyone thought to subscribe.
+     * - A subscriber fires ONCE -- on the next successful open -- unless
+     *   `bSticky` is true, in which case it fires on every open, including
+     *   reopens after `close()`.
+     *
+     * A subscriber added while `ready` is being fired joins the current batch
+     * rather than being dropped or fired twice.
+     */
+    private _installReadySemantics(): void {
+        const readyEvent = this.on['ready'] as NexieEvent;
+        const subscribeRaw = readyEvent.subscribe.bind(readyEvent);
+
+        readyEvent.subscribe = (
+            subscriber: (db: Nexie) => unknown,
+            bSticky?: boolean,
+        ): void => {
+            const state = this._state;
+            if (state.onReadyBeingFired) {
+                state.onReadyBeingFired.push(subscriber);
+                if (bSticky) subscribeRaw(subscriber);
+            } else if (this.isOpen()) {
+                // Already open: fire as soon as possible, and VIP so that a
+                // subscriber reaching for the database is not gated on an open
+                // it can see has finished.
+                void NexiePromise.resolve().then(() =>
+                    Nexie.vip(() => subscriber(this)),
+                );
+                if (bSticky) subscribeRaw(subscriber);
+            } else {
+                subscribeRaw(subscriber);
+                if (!bSticky) {
+                    // Fire once: unsubscribe both the subscriber and this
+                    // helper the first time the event fires. The helper is
+                    // subscribed AFTER the subscriber, so the promisable chain
+                    // runs it after -- and only after -- the subscriber.
+                    const unsubscribeOnce = (): void => {
+                        readyEvent.unsubscribe(subscriber);
+                        readyEvent.unsubscribe(unsubscribeOnce);
+                    };
+                    subscribeRaw(unsubscribeOnce);
+                }
+            }
+        };
+    }
+
+    /**
+     * Fire `ready`, then whatever subscribed while it was firing, sequentially
+     * and VIP. `open()` does not resolve until this settles.
+     */
+    private _fireReady(): NexiePromise<void> {
+        const state = this._state;
+        const late: Array<(db: Nexie) => unknown> = [];
+        state.onReadyBeingFired = late;
+
+        const drainLate = (): NexiePromise<void> => {
+            const next = late.shift();
+            if (!next) return NexiePromise.resolve();
+            return NexiePromise.resolve(Nexie.vip(() => next(this))).then(
+                drainLate,
+            );
+        };
+
+        return NexiePromise.resolve(
+            Nexie.vip(() => this.on['ready']!.fire(this)),
+        )
+            .then(drainLate)
+            .finally(() => {
+                state.onReadyBeingFired = null;
+            });
     }
 
     /** Subscribe to an event, then unsubscribe as soon as it has fired once. */
@@ -328,12 +444,14 @@ export class Nexie {
         return new this.Table(this, tableName, schema, tx);
     }
 
-    table<T = any, TKey = any>(tableName: string): Table<T, TKey> {
+    table<T = any, TKey = any, TInsertType = T>(
+        tableName: string,
+    ): Table<T, TKey, TInsertType> {
         const table = this._allTables[tableName];
         if (!table) {
             throw new InvalidTableError(`Table ${tableName} does not exist`);
         }
-        return table as Table<T, TKey>;
+        return table as Table<T, TKey, TInsertType>;
     }
 
     /**
@@ -456,6 +574,7 @@ export class Nexie {
                 const idbdb = request.result;
                 this.idbdb = idbdb;
                 registerConnection(this.name, this._options.maxConnections);
+                this._observeBfcache();
                 this._state.isBeingOpened = false;
                 this._state.openComplete = true;
 
@@ -465,6 +584,7 @@ export class Nexie {
                 idbdb.onclose = (event) => {
                     this.idbdb = null;
                     unregisterConnection(this.name);
+                    this._unobserveBfcacheIfIdle();
                     this.on['close']!.fire(event);
                 };
 
@@ -473,9 +593,7 @@ export class Nexie {
                 // they are part of has not resolved yet, so an operation that
                 // waited for it would wait forever.
                 NexiePromise.resolve(upgrading ?? undefined)
-                    .then(() =>
-                        Nexie.vip(() => this.on['ready']!.fire(this)),
-                    )
+                    .then(() => this._fireReady())
                     .then(() => resolve(this))
                     .catch(reject);
             };
@@ -534,6 +652,7 @@ export class Nexie {
                 const idbdb = request.result;
                 this.idbdb = idbdb;
                 registerConnection(this.name, this._options.maxConnections);
+                this._observeBfcache();
                 this._dynamicallyOpened = true;
                 this._state.isBeingOpened = false;
                 this._state.openComplete = true;
@@ -544,6 +663,7 @@ export class Nexie {
                 idbdb.onclose = (event) => {
                     this.idbdb = null;
                     unregisterConnection(this.name);
+                    this._unobserveBfcacheIfIdle();
                     this.on['close']!.fire(event);
                 };
 
@@ -558,7 +678,7 @@ export class Nexie {
                 }
 
                 NexiePromise.resolve()
-                    .then(() => Nexie.vip(() => this.on['ready']!.fire(this)))
+                    .then(() => this._fireReady())
                     .then(() => resolve(this))
                     .catch(reject);
             };
@@ -675,13 +795,35 @@ export class Nexie {
         for (const name of Object.keys(to)) {
             const tableSchema = to[name]!;
             if (idbdb.objectStoreNames.contains(name)) {
-                this._updateIndexes(idbtrans.objectStore(name), tableSchema);
+                const store = idbtrans.objectStore(name);
+                this._checkPrimaryKey(store, tableSchema);
+                this._updateIndexes(store, tableSchema);
             } else {
                 this._createStore(idbdb, tableSchema);
             }
         }
+    }
 
-        void from;
+    /**
+     * IndexedDB cannot change a store's primary key in place, and pretending
+     * otherwise is the worst outcome available: the store would keep its old
+     * key while every key-path computation here used the new one. Compared
+     * against the LIVE store rather than the previous declared version, so a
+     * declaration that drifted from what is on disk is caught the same way.
+     * Same message prefix as Dexie, which callers may match on.
+     */
+    private _checkPrimaryKey(store: IDBObjectStore, schema: TableSchema): void {
+        const wanted = schema.primKey;
+        const actualPath = joinKeyPath(store.keyPath);
+        const wantedPath = joinKeyPath(wanted.keyPath);
+        if (actualPath !== wantedPath || store.autoIncrement !== wanted.auto) {
+            throw new UpgradeError(
+                `Not yet support for changing primary key (table ${schema.name}: ` +
+                    `${describeKey(actualPath, store.autoIncrement)} -> ` +
+                    `${describeKey(wantedPath, wanted.auto)}). Drop the table ` +
+                    'and recreate it in a new version instead.',
+            );
+        }
     }
 
     private _createStore(idbdb: IDBDatabase, schema: TableSchema): void {
@@ -746,6 +888,7 @@ export class Nexie {
             this.idbdb = null;
             unregisterConnection(this.name);
         }
+        this._unobserveBfcacheIfIdle();
         this._state.openPromise = null;
         this._state.openComplete = false;
         this._state.dbOpenError = this._closedError();
@@ -764,8 +907,11 @@ export class Nexie {
             const request = indexedDB.deleteDatabase(this.name);
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
-            request.onblocked = () => {
-                // Another connection is open; the delete completes once it closes.
+            request.onblocked = (event) => {
+                // Another connection is open; the delete completes once it
+                // closes. Say so -- a delete that waits with no signal is
+                // indistinguishable from a hang.
+                this.on['blocked']!.fire(event);
             };
         });
     }
@@ -864,8 +1010,20 @@ export class Nexie {
         const ambient = getZone().trans as Transaction | undefined;
         let parent: Transaction | undefined;
 
+        // Dexie's rules, including its error names and messages -- code
+        // matches on those. `!` never joins; `?` joins when it can and starts
+        // fresh when it cannot, which includes a parent that is no longer
+        // active. Without `?`, an incompatible parent is a SubTransactionError.
         if (ambient && ambient.db === this && !parsed.forceNew) {
-            if (ambient.mode === 'readwrite' || parsed.idbMode === 'readonly') {
+            if (ambient.mode === 'readonly' && parsed.idbMode === 'readwrite') {
+                if (!parsed.lenient) {
+                    return NexiePromise.reject(
+                        new SubTransactionError(
+                            'Cannot enter a sub-transaction with READWRITE mode when parent transaction is READONLY',
+                        ),
+                    );
+                }
+            } else {
                 const missing = storeNames.filter(
                     (name) => !ambient.storeNames.includes(name),
                 );
@@ -874,18 +1032,14 @@ export class Nexie {
                 } else if (!parsed.lenient) {
                     return NexiePromise.reject(
                         new SubTransactionError(
-                            `Table(s) ${missing.join(', ')} not included in parent transaction.`,
+                            `Table ${missing.join(', ')} not included in parent transaction.`,
                         ),
                     );
                 }
-            } else if (!parsed.lenient) {
-                // A write inside a read transaction can never be satisfied.
-                return NexiePromise.reject(
-                    new ReadOnlyError(
-                        'Cannot enter a readwrite transaction from within a readonly transaction.',
-                    ),
-                );
             }
+            // A `?` scope on a parent that has already ended would only fail
+            // with TransactionInactiveError; starting fresh is what `?` means.
+            if (parent && parsed.lenient && !parent.active) parent = undefined;
         }
 
         // A VIP caller is inside the open it would otherwise wait for, and it
@@ -1024,6 +1178,16 @@ export class Nexie {
                 .map((database) => database.name)
                 .filter((name): name is string => typeof name === 'string'),
         );
+    }
+
+    /**
+     * A plain class whose constructor copies its argument's properties. The
+     * static form of `Table.defineClass()`, which additionally maps the table.
+     */
+    static defineClass<T = any>(): new (content?: Partial<T>) => T {
+        return function (this: any, content?: unknown) {
+            if (content) Object.assign(this, content);
+        } as unknown as new (content?: Partial<T>) => T;
     }
 
     /** The transaction the calling code is currently inside, if any. */

@@ -1,5 +1,6 @@
 import isPotentiallyValidKeyRange from "./isPotentiallyValidKeyRange.ts";
 import enforceRange from "./enforceRange.ts";
+import validateCursorDirection from "./validateCursorDirection.ts";
 import type FDBKeyRange from "../FDBKeyRange.ts";
 import type { FDBCursorDirection, FDBGetAllOptions, Key } from "./types.ts";
 
@@ -32,7 +33,7 @@ const extractGetAllOptions = (
             count = enforceRange(getAllOptions.count, "unsigned long");
         }
         if (getAllOptions.direction !== undefined) {
-            direction = getAllOptions.direction;
+            direction = validateCursorDirection(getAllOptions.direction);
         }
     }
     return {

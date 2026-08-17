@@ -51,13 +51,16 @@ type MaybeSetImmediate = {
     setImmediate?: (fn: () => void) => void;
 };
 
+// Resolved once: this runs on every request, transaction step and
+// connection-close poll, and the environment does not change under it.
+const scheduleTask: (fn: () => void) => void =
+    (globalThis as typeof globalThis & MaybeSetImmediate).setImmediate ||
+    getSetImmediateFromJsdom() ||
+    schedulerPostTask ||
+    doSetTimeout;
+
 export const queueTask = (fn: () => void): void => {
-    const setImmediate =
-        (globalThis as typeof globalThis & MaybeSetImmediate).setImmediate ||
-        getSetImmediateFromJsdom() ||
-        schedulerPostTask ||
-        doSetTimeout;
-    setImmediate(fn);
+    scheduleTask(fn);
 };
 
 // Run `fn` at the end of the current microtask checkpoint -- after the

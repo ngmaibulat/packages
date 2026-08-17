@@ -138,6 +138,27 @@ suite('transaction.done - error attribution', () => {
     assert.strictEqual(await db.get('s', 'other'), 'written', 'tx committed');
   });
 
+  // The `defaultPrevented` guard is the half of the fix a browser exercises:
+  // there the flag is visible while the error bubbles to the transaction. The
+  // test above also stops propagation, which never reaches that guard.
+  test('resolves when the error is only preventDefault()ed', async () => {
+    db = await freshDB();
+    await db.add('s', 'first', 'dup');
+
+    const tx = db.transaction('s', 'readwrite');
+    const operation = tx.store.add('second', 'dup');
+    unwrap(operation).addEventListener('error', (event) => {
+      event.preventDefault();
+    });
+    operation.catch(() => {});
+    tx.store.put('written', 'other');
+
+    await tx.done;
+
+    assert.strictEqual(await db.get('s', 'dup'), 'first', 'not overwritten');
+    assert.strictEqual(await db.get('s', 'other'), 'written', 'tx committed');
+  });
+
   test('explicit abort() still rejects with AbortError', async () => {
     db = await freshDB();
 

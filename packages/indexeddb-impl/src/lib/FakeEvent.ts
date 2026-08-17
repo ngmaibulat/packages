@@ -22,7 +22,13 @@ class Event {
 
     public eventPhase: 0 | 1 | 2 | 3 = 0;
 
-    public defaultPrevented = false;
+    // https://dom.spec.whatwg.org/#dom-event-defaultprevented -- "return true
+    // if this's canceled flag is set". It was a plain field that nothing ever
+    // set, so `preventDefault()` was invisible to anyone reading it -- and a
+    // wrapper deciding whether an error was cancelled during bubbling read it.
+    public get defaultPrevented(): boolean {
+        return this.canceled;
+    }
 
     public isTrusted = false;
     public timeStamp = Date.now();

@@ -342,3 +342,66 @@ suite('liveQuery', () => {
         assert.equal((observable[key] as () => unknown)(), observable);
     });
 });
+
+suite('liveQuery: zone of the observer', () => {
+    test('the observer runs outside any transaction, and may use the database', async () => {
+        // The re-run is triggered from the committing transaction's own
+        // completion. Left in that zone, `next` would see a transaction that
+        // has already ended and every db call in it would fail with
+        // TransactionInactiveError.
+        db.version(1).stores({ friends: '++id, name, age', log: '++id' });
+        await db.table('friends').add({ name: 'a', age: 1 });
+
+        const seen: (unknown | null)[] = [];
+        let logged = 0;
+        let failure: unknown = null;
+        track(
+            liveQuery(() => db.table('friends').toArray()).subscribe(
+                async (friends: unknown[]) => {
+                    seen.push(Nexie.currentTransaction);
+                    try {
+                        await db.table('log').add({ n: friends.length });
+                        logged++;
+                    } catch (error) {
+                        failure = error;
+                    }
+                },
+            ),
+        );
+        await waitUntil(() => logged === 1, 'first delivery');
+
+        await afterMutation(() => db.table('friends').put({ name: 'b', age: 2 }));
+        await waitUntil(() => logged === 2, 'second delivery');
+
+        await afterMutation(() =>
+            db.transaction('rw', db.table('friends'), async () => {
+                await db.table('friends').put({ name: 'c', age: 3 });
+            }),
+        );
+        await waitUntil(() => logged === 3, 'third delivery');
+
+        assert.isNull(failure);
+        assert.deepEqual(seen, [null, null, null]);
+    });
+
+    test('subscribing inside a transaction scope does not join it', async () => {
+        await db.table('friends').add({ name: 'a', age: 1 });
+        let inside: unknown = 'unset';
+        let values: unknown[] | null = null;
+
+        await db.transaction('rw', db.table('friends'), async () => {
+            track(
+                liveQuery(() => {
+                    inside = Nexie.currentTransaction;
+                    return db.table('friends').toArray();
+                }).subscribe((v: unknown[]) => {
+                    values = v;
+                }),
+            );
+            await db.table('friends').add({ name: 'b', age: 2 });
+        });
+
+        await waitUntil(() => values !== null, 'first result');
+        assert.isNull(inside, 'the querier has its own transaction');
+    });
+});

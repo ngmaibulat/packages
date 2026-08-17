@@ -51,12 +51,12 @@ function seekKey(
 }
 
 export class WhereClause<T = any, TKey = IndexableType> {
-    readonly _table: Table<T, TKey>;
+    readonly _table: Table<T, TKey, any>;
     readonly _indexName: string | null;
     readonly _or: Collection<T, TKey> | null;
 
     constructor(
-        table: Table<T, TKey>,
+        table: Table<T, TKey, any>,
         indexName: string | null,
         orCollection?: Collection<T, TKey> | null,
     ) {

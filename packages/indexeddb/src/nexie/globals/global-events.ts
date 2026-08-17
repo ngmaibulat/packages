@@ -1,3 +1,4 @@
+import { rootZone, runInZone } from '../zone/zone.ts';
 import type { ObservabilitySet } from '../live-query/obs-set.ts';
 
 /**
@@ -32,11 +33,17 @@ export const globalEvents = {
         /**
          * A listener that throws must not stop the others, and must not take
          * down the transaction whose commit fired this.
+         *
+         * Listeners run in the root zone. This fires from the committing
+         * transaction's completion, inside that transaction's zone -- and a
+         * listener is not part of that transaction. Left as is, a `liveQuery`
+         * woken by a commit would run its observer inside a transaction that
+         * has just ended.
          */
         fire(parts: ObservabilitySet): void {
             for (const listener of [...listeners]) {
                 try {
-                    listener(parts);
+                    runInZone(rootZone, listener, parts);
                 } catch (error) {
                     queueMicrotask(() => {
                         throw error;

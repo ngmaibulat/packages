@@ -41,15 +41,19 @@ class RecordStore {
         return deletedRecords;
     }
 
-    public deleteByValue(key: Key | FDBKeyRange) {
-        const range = key instanceof FDBKeyRange ? key : FDBKeyRange.only(key);
+    /**
+     * Delete the records with this exact key whose value equals `value` -- an
+     * index entry, in other words: `key` is the index key, `value` the primary
+     * key it points at. A range lookup on the key, then a comparison on the
+     * handful of records sharing it.
+     */
+    public deleteByKeyAndValue(key: Key, value: Key) {
+        const deletedRecords = [
+            ...this.records.getRecords(FDBKeyRange.only(key)),
+        ].filter((record) => cmpKeys(record.value, value) === 0);
 
-        const deletedRecords: Record[] = [];
-        for (const record of this.records.getAllRecords()) {
-            if (range.includes(record.value)) {
-                this.records.delete(record);
-                deletedRecords.push(record);
-            }
+        for (const record of deletedRecords) {
+            this.records.delete(record);
         }
 
         return deletedRecords;

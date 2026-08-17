@@ -99,6 +99,12 @@ export type {
 } from './nexie/classes/collection.ts';
 export type { TransactionMode } from './nexie/types/transaction.ts';
 export type {
+    EntityTable,
+    IDType,
+    InsertType,
+    NonInsertProps,
+} from './nexie/types/entity-table.ts';
+export type {
     DbSchema,
     IndexableType,
     IndexableTypeArray,

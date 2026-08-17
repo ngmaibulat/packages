@@ -281,3 +281,52 @@ suite('unsubscribing', () => {
         assert.strictEqual(fired, 1, 'no longer subscribed');
     });
 });
+
+suite('hooks survive schema re-declaration', () => {
+    test('a hook registered before a later version() still fires', async () => {
+        let fired = 0;
+        docs.hook('creating', () => {
+            fired++;
+        });
+        // Registering another version re-parses every schema object.
+        db.version(2).stores({ docs: '++id, title, revision' });
+
+        await db.table('docs').add({ title: 'a' });
+        assert.equal(fired, 1);
+    });
+
+    test('mapToClass survives a later version()', async () => {
+        class Doc {
+            title!: string;
+            shout(): string {
+                return this.title.toUpperCase();
+            }
+        }
+        docs.mapToClass(Doc);
+        db.version(2).stores({ docs: '++id, title, revision' });
+
+        await db.table('docs').add({ title: 'a' });
+        const read = (await db.table('docs').toArray())[0] as Doc;
+        assert.instanceOf(read, Doc);
+        assert.equal(read.shout(), 'A');
+    });
+
+    test('until() sees mapped values, like filter()', async () => {
+        class Doc {
+            title!: string;
+            isStop(): boolean {
+                return this.title === 'b';
+            }
+        }
+        docs.mapToClass(Doc);
+        await docs.bulkAdd([{ title: 'a' }, { title: 'b' }, { title: 'c' }]);
+        const before = await docs
+            .toCollection()
+            .until((doc) => (doc as unknown as Doc).isStop())
+            .toArray();
+        assert.deepEqual(
+            before.map((d) => d.title),
+            ['a'],
+        );
+    });
+});

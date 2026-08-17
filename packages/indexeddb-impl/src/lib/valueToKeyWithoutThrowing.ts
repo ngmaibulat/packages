@@ -34,13 +34,6 @@ const valueToKeyWithoutThrowing = (
             ArrayBuffer.isView &&
             ArrayBuffer.isView(input))
     ) {
-        // We can't consistently test detachedness, so instead we check if byteLength === 0
-        // This isn't foolproof, but there's no perfect way to detect if Uint8Arrays or
-        // SharedArrayBuffers are detached
-        if ("detached" in input ? input.detached : input.byteLength === 0) {
-            // If input is detached then return "invalid value".
-            return INVALID_VALUE;
-        }
         let arrayBuffer;
         let offset = 0;
         let length = 0;
@@ -53,7 +46,28 @@ const valueToKeyWithoutThrowing = (
             length = input.byteLength;
         }
 
-        return arrayBuffer.slice(offset, offset + length);
+        // Detachedness is a property of the BUFFER, so for a view it is the
+        // view's buffer that has to be asked -- a view has no `detached` of
+        // its own, and asking it fell through to the byteLength heuristic,
+        // which then rejected a perfectly valid zero-length Uint8Array key.
+        // The heuristic stays only for engines without `detached` (pre-ES2024),
+        // where a genuinely empty buffer is indistinguishable from a detached one.
+        const detached =
+            "detached" in arrayBuffer
+                ? arrayBuffer.detached
+                : !isSharedArrayBuffer(arrayBuffer) && arrayBuffer.byteLength === 0;
+        if (detached) {
+            // If input is detached then return "invalid value".
+            return INVALID_VALUE;
+        }
+
+        // "Get a copy of the bytes held by the buffer source": a fresh
+        // ArrayBuffer, whatever the input was backed by. `slice()` on a
+        // SharedArrayBuffer returns another SharedArrayBuffer, which the key
+        // comparison then does not recognise as binary -- and that surfaced
+        // as a DataError from inside the record tree, outside any try/catch.
+        return new Uint8Array(new Uint8Array(arrayBuffer, offset, length))
+            .buffer;
     } else if (Array.isArray(input)) {
         if (seen === undefined) {
             seen = new Set();

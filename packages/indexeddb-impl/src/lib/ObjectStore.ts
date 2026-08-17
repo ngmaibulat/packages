@@ -169,7 +169,7 @@ class ObjectStore {
 
                 let i = 0; // Just to run the loop at least once
                 while (i >= 0) {
-                    if (typeof object !== "object") {
+                    if (typeof object !== "object" || object === null) {
                         throw new DataError();
                     }
 
@@ -236,7 +236,7 @@ class ObjectStore {
         // Delete existing indexes
         if (existingRecord) {
             for (const rawIndex of this.rawIndexes.values()) {
-                rawIndex.records.deleteByValue(newRecord.key);
+                rawIndex.deleteRecord(existingRecord);
             }
         }
 
@@ -274,7 +274,9 @@ class ObjectStore {
         }
 
         for (const rawIndex of this.rawIndexes.values()) {
-            rawIndex.records.deleteByValue(key);
+            for (const record of deletedRecords) {
+                rawIndex.deleteRecord(record);
+            }
         }
     }
 

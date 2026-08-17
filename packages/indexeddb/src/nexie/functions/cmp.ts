@@ -20,8 +20,18 @@ function isBinary(key: unknown): key is ArrayBuffer | ArrayBufferView {
 }
 
 function typeRank(key: unknown): number {
-    if (typeof key === 'number') return 1;
-    if (key instanceof Date) return 2;
+    // NaN and an invalid Date are the two members of their types that
+    // IndexedDB refuses as keys.
+    if (typeof key === 'number') {
+        if (Number.isNaN(key)) throw new DataError('Invalid key: NaN');
+        return 1;
+    }
+    if (key instanceof Date) {
+        if (Number.isNaN(key.getTime())) {
+            throw new DataError('Invalid key: Invalid Date');
+        }
+        return 2;
+    }
     if (typeof key === 'string') return 3;
     if (isBinary(key)) return 4;
     if (Array.isArray(key)) return 5;

@@ -10,7 +10,15 @@
 #
 # Recorded as UNSTABLE so neither outcome turns the build red. Whether the
 # expectTimeout fires is part of the same race.
+#
+# `expectedTests` lists every test in the file, so a run that is killed by the
+# timeout still registers the same number of verdicts as a clean one -- the
+# Node/Bun parity check compares totals. See run-all.js.
 expectTimeout = "UNSTABLE"
+expectedTests = [
+    "in the complete event handler for a committed transaction",
+    "in a setTimeout(0) callback after the complete event is fired for a committed transaction",
+]
 
 ["in a setTimeout(0) callback after the complete event is fired for a committed transaction"]
 expectation = "UNSTABLE"

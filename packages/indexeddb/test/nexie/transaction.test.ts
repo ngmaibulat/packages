@@ -220,7 +220,7 @@ suite('transaction: modes and nesting', () => {
         assert.strictEqual(await db.friends.count(), 0);
     });
 
-    test('rw inside r is rejected, and rw? is tolerated', async () => {
+    test('rw inside r is a SubTransactionError, as in Dexie', async () => {
         let caught: unknown;
         await db
             .transaction('r', db.friends, async () => {
@@ -229,7 +229,8 @@ suite('transaction: modes and nesting', () => {
             .catch((error) => {
                 caught = error;
             });
-        assert.strictEqual((caught as Error).name, 'ReadOnlyError');
+        assert.strictEqual((caught as Error).name, 'SubTransactionError');
+        assert.include((caught as Error).message, 'READWRITE');
     });
 
     test('a table outside the parent transaction is rejected', async () => {
@@ -274,5 +275,145 @@ suite('transaction: waitFor', () => {
 
     test('outside a transaction it is just a promise', async () => {
         assert.strictEqual(await Nexie.waitFor(Promise.resolve(7)), 7);
+    });
+});
+
+suite('transaction: overlapping waitFor', () => {
+    const later = <T>(value: T, ms: number) =>
+        new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
+
+    test('two waits at once, the later one settling first, both come back', async () => {
+        // The keep-alive spin must outlive the LAST outstanding wait. Tracked
+        // as a single "current wait" it stopped when the fast one settled and
+        // the slow one's continuation sat in the queue forever.
+        const result = await db.transaction('rw', db.friends, async () => {
+            const slow = Nexie.waitFor(later('slow', 60));
+            const fast = Nexie.waitFor(later('fast', 5));
+            const b = await fast;
+            const a = await slow;
+            await db.friends.add({ name: a + b, age: 1 });
+            return `${a},${b}`;
+        });
+
+        assert.equal(result, 'slow,fast');
+        assert.equal(await db.friends.count(), 1);
+    });
+
+    test('a rejected wait does not strand a concurrent one', async () => {
+        const result = await db.transaction('rw', db.friends, async () => {
+            const bad = Nexie.waitFor(
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('nope')), 5),
+                ),
+            );
+            const good = Nexie.waitFor(later('ok', 30));
+            let failed = false;
+            await bad.catch(() => {
+                failed = true;
+            });
+            const value = await good;
+            await db.friends.add({ name: value, age: 1 });
+            return { failed, value };
+        });
+
+        assert.deepEqual(result, { failed: true, value: 'ok' });
+        assert.equal(await db.friends.count(), 1);
+    });
+});
+
+suite('transaction: the ! and ? modifiers', () => {
+    // A scope that cannot ride on its parent opens a transaction of its own,
+    // and the parent's IDB transaction does not wait for it: awaiting the
+    // fresh one from inside the parent's body lets the parent auto-commit
+    // (PrematureCommitError -- Dexie has the same limitation). So the tests
+    // below either wrap the inner scope in `Nexie.waitFor`, which keeps the
+    // parent alive, or use tables the parent does not hold, so IndexedDB does
+    // not serialise the two.
+    test('rw! never joins the parent, even a compatible one', async () => {
+        db.close();
+        db.version(2).stores({ friends: '++id, name, age, &email', log: '++id' });
+        await db.transaction('rw', db.table('log'), async (outer) => {
+            await Nexie.waitFor(
+                db.transaction('rw!', db.friends, async (inner) => {
+                    assert.notStrictEqual(inner.idbtrans, outer.idbtrans);
+                    await db.friends.add({ name: 'a', age: 1 });
+                }),
+            );
+        });
+        assert.equal(await db.friends.count(), 1);
+    });
+
+    test('r! never joins the parent', async () => {
+        await db.friends.add({ name: 'a', age: 1 });
+        await db.transaction('rw', db.friends, async (outer) => {
+            // Same store, readonly: allowed to overlap with the readwrite? No --
+            // it waits for the parent to commit, so it must not be awaited from
+            // inside. Start it and let it finish afterwards.
+            const started = db.transaction('r!', db.friends, async (inner) => {
+                assert.notStrictEqual(inner.idbtrans, outer.idbtrans);
+                return db.friends.count();
+            });
+            void started;
+            await db.friends.add({ name: 'b', age: 2 });
+        });
+    });
+
+    test('rw? joins a compatible parent', async () => {
+        await db.transaction('rw', db.friends, async (outer) => {
+            await db.transaction('rw?', db.friends, async (inner) => {
+                assert.strictEqual(inner.idbtrans, outer.idbtrans);
+            });
+        });
+    });
+
+    test('rw? inside r starts its own transaction instead of failing', async () => {
+        db.close();
+        db.version(2).stores({ friends: '++id, name, age, &email', log: '++id' });
+        await db.transaction('r', db.table('log'), async (outer) => {
+            await Nexie.waitFor(
+                db.transaction('rw?', db.friends, async (inner) => {
+                    assert.notStrictEqual(inner.idbtrans, outer.idbtrans);
+                    assert.equal(inner.mode, 'readwrite');
+                    await db.friends.add({ name: 'a', age: 1 });
+                }),
+            );
+        });
+        assert.equal(await db.friends.count(), 1);
+    });
+
+    test('r? with a table outside the parent starts its own transaction', async () => {
+        db.close();
+        db.version(2).stores({ friends: '++id, name, age, &email', log: '++id' });
+        await db.transaction('rw', db.friends, async (outer) => {
+            await Nexie.waitFor(
+                db.transaction('r?', db.table('log'), async (inner) => {
+                    assert.notStrictEqual(inner.idbtrans, outer.idbtrans);
+                    assert.equal(await db.table('log').count(), 0);
+                }),
+            );
+        });
+    });
+
+    test('rw? on a parent that has already ended starts fresh', async () => {
+        let innerFresh: boolean | undefined;
+        let innerActive: boolean | undefined;
+        await db
+            .transaction('rw', db.friends, async (outer) => {
+                // End the parent from inside its own body: the zone still
+                // carries it, but it is no longer usable.
+                outer.abort();
+                await db.transaction('rw?', db.friends, async (inner) => {
+                    innerFresh = inner.idbtrans !== outer.idbtrans;
+                    innerActive = inner.active;
+                    await db.friends.add({ name: 'fresh', age: 1 });
+                });
+            })
+            .catch(() => {
+                // The aborted parent rejects; that is not what is under test.
+            });
+
+        assert.isTrue(innerFresh, 'a `?` scope does not ride a dead parent');
+        assert.isTrue(innerActive);
+        assert.equal(await db.friends.count(), 1);
     });
 });

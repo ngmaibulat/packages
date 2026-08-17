@@ -1,5 +1,6 @@
 import { enqueue, atEndOfTick } from './scheduler.ts';
 import {
+    findUnhandledSink,
     getZone,
     newZone,
     release,
@@ -77,10 +78,23 @@ export class NexiePromise<T> implements PromiseLike<T> {
      */
     static debug = false;
 
+    /**
+     * What happens to a rejection that reaches the root zone with nobody
+     * listening. Inside a `follow()` scope it is the scope's failure; out here
+     * there is no scope to fail, so the default hands it to the host the way a
+     * native promise would -- an `unhandledrejection` event where the platform
+     * has one, the console otherwise. Replaceable, for hosts that want to route
+     * it elsewhere.
+     */
+    static onUnhandled: (reason: unknown, promise: NexiePromise<unknown>) => void =
+        reportUnhandledToHost;
+
     private _state: State = PENDING;
     private _value: unknown = undefined;
     private _listeners: Listener[] = [];
     private readonly _zone: Zone;
+    /** True once anything has subscribed, so a rejection is somebody's problem. */
+    private _handled = false;
 
     constructor(
         executor?: (
@@ -131,13 +145,17 @@ export class NexiePromise<T> implements PromiseLike<T> {
                     (reason) => {
                         if (settled) return;
                         settled = true;
-                        this._settle(REJECTED, reason);
+                        // Through the mapper like every other rejection: a
+                        // DOMException arriving via a native promise -- a
+                        // `Nexie.waitFor(fetch(...))`, say -- must become the
+                        // same NexieError it would have been anywhere else.
+                        this._reject(reason);
                     },
                 );
             } catch (error) {
                 if (!settled) {
                     settled = true;
-                    this._settle(REJECTED, error);
+                    this._reject(error);
                 }
             }
             return;
@@ -172,7 +190,32 @@ export class NexiePromise<T> implements PromiseLike<T> {
         this._listeners = [];
         for (const listener of listeners) this._schedule(listener);
 
+        // Registered BEFORE the release below: releasing may finalize a
+        // `follow()` zone, which queues its own end-of-tick check, and the
+        // verdict on this rejection has to land first so the follow rejects
+        // rather than resolves.
+        if (state === REJECTED && !this._handled) {
+            atEndOfTick(() => {
+                if (!this._handled) this._reportUnhandled();
+            });
+        }
+
         release(this._zone);
+    }
+
+    /**
+     * Nobody subscribed by the end of the tick in which this promise rejected.
+     * Inside a scope that is the scope's failure; at the root it goes to the
+     * host. Either way it is not silently dropped -- a fire-and-forget write
+     * that failed is exactly the kind of thing that must not vanish.
+     */
+    private _reportUnhandled(): void {
+        const sink = findUnhandledSink(this._zone);
+        if (sink) {
+            sink(this._value);
+            return;
+        }
+        NexiePromise.onUnhandled(this._value, this);
     }
 
     private _schedule(listener: Listener): void {
@@ -214,6 +257,10 @@ export class NexiePromise<T> implements PromiseLike<T> {
         onRejected?: Rejected<R2>,
     ) => NexiePromise<R1 | R2> {
         const zoneAtAccess = getZone();
+        // Reading `then` IS subscribing, as far as unhandled-rejection tracking
+        // is concerned: for `await p` the engine reads it now and only calls
+        // it a microtask later, and the end-of-tick check runs in between.
+        this._handled = true;
         return (onFulfilled, onRejected) =>
             this._thenIn(zoneAtAccess, onFulfilled, onRejected);
     }
@@ -236,6 +283,7 @@ export class NexiePromise<T> implements PromiseLike<T> {
         onFulfilled?: Fulfilled<T, R1>,
         onRejected?: Rejected<R2>,
     ): NexiePromise<R1 | R2> {
+        this._handled = true;
         const result = new NexiePromise<R1 | R2>(undefined, zone);
 
         const listener: Listener = {
@@ -471,7 +519,16 @@ export class NexiePromise<T> implements PromiseLike<T> {
             }
 
             iterated = true;
-            if (remaining === 0) fail(-1, undefined);
+            if (remaining === 0) {
+                // Nothing to wait for: reject now, as the native `any` does.
+                // (`fail` would decrement to -1 and never fire.)
+                const error: Error & { errors?: unknown[] } = new Error(
+                    'All promises were rejected',
+                );
+                error.name = 'AggregateError';
+                error.errors = [];
+                reject(error);
+            }
         });
     }
 
@@ -501,6 +558,11 @@ export class NexiePromise<T> implements PromiseLike<T> {
                         if (zone.pending === 0) resolve();
                     });
                 };
+                // A rejection inside the scope that nobody handles is the
+                // scope's failure. Without this an `on('populate')` that
+                // fires off a write which then fails would open the database
+                // with the seed half-written and say nothing.
+                zone.onunhandled = reject;
                 try {
                     fn();
                 } catch (error) {
@@ -512,4 +574,41 @@ export class NexiePromise<T> implements PromiseLike<T> {
             }, props);
         });
     }
+}
+
+/**
+ * The root-zone default for `NexiePromise.onUnhandled`.
+ *
+ * Mirrors what the platform does for a native promise as far as it can be done
+ * from library code: a cancelable `unhandledrejection` event on the global
+ * where `PromiseRejectionEvent` exists (browsers), and the console where the
+ * event either does not exist or nobody cancelled it. Node has no
+ * `PromiseRejectionEvent`, so there it is the console -- deliberately not
+ * `process.emit('unhandledRejection')`, which would crash the process under
+ * Node's default policy over a library promise it never created.
+ */
+function reportUnhandledToHost(
+    reason: unknown,
+    promise: NexiePromise<unknown>,
+): void {
+    const host = globalThis as {
+        PromiseRejectionEvent?: new (
+            type: string,
+            init: { promise: unknown; reason: unknown; cancelable: boolean },
+        ) => Event;
+        dispatchEvent?: (event: Event) => boolean;
+    };
+    if (
+        typeof host.PromiseRejectionEvent === 'function' &&
+        typeof host.dispatchEvent === 'function'
+    ) {
+        const event = new host.PromiseRejectionEvent('unhandledrejection', {
+            promise,
+            reason,
+            cancelable: true,
+        });
+        // `dispatchEvent` returns false when a listener called preventDefault.
+        if (!host.dispatchEvent(event)) return;
+    }
+    console.error('Unhandled Nexie promise rejection:', reason);
 }

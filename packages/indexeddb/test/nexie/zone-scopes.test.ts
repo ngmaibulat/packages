@@ -242,3 +242,48 @@ suite('ForeignAwaitError', () => {
         assert.equal(await db.table('logs').count(), 1);
     });
 });
+
+suite('zone accounting across nested scopes', () => {
+    test('the diagnosis survives a nested scope', async () => {
+        // A child zone paying its parent back once per await -- against a
+        // single up-front charge -- drove the parent's counter negative, after
+        // which "no work outstanding" was unreachable and the precise
+        // ForeignAwaitError degraded to the PrematureCommit fallback.
+        await db.open();
+
+        let caught: unknown;
+        await db
+            .transaction('rw', db.table('friends'), async () => {
+                await db.transaction('rw', db.table('friends'), async () => {
+                    await db.table('friends').add({ name: 'nested', age: 1 });
+                    await db.table('friends').count();
+                });
+                await db.table('friends').add({ name: 'a', age: 2 });
+                await foreign('nothing');
+                await db.table('friends').add({ name: 'b', age: 3 });
+            })
+            .catch((error) => {
+                caught = error;
+            });
+
+        assert.equal(
+            (caught as Error).name,
+            'ForeignAwaitError',
+            'the precise diagnosis, not the fallback',
+        );
+    });
+
+    test('an outer scope waits for work an inner scope started', async () => {
+        await db.open();
+        let innerDone = false;
+        await db.transaction('rw', db.table('friends'), () => {
+            void db.transaction('rw', db.table('friends'), async () => {
+                await db.table('friends').add({ name: 'inner', age: 1 });
+                await db.table('friends').add({ name: 'inner2', age: 2 });
+                innerDone = true;
+            });
+        });
+        assert.isTrue(innerDone, 'the outer scope resolved before the inner finished');
+        assert.equal(await db.table('friends').count(), 2);
+    });
+});

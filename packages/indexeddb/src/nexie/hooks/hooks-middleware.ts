@@ -72,7 +72,7 @@ export interface TableHooks {
 
 /** Lazily attach the hook event set to a table schema. */
 export function getTableHooks(schema: TableSchema): TableHooks {
-    const existing = (schema as { hooks?: TableHooks }).hooks;
+    const existing = schema.hooks as TableHooks | undefined;
     if (existing) return existing;
 
     const creating = createEvent(hookCreatingChain, nop);
@@ -103,7 +103,7 @@ export function getTableHooks(schema: TableSchema): TableHooks {
         deleting: { value: deleting, enumerable: true },
     });
 
-    (schema as { hooks?: TableHooks }).hooks = hooks;
+    schema.hooks = hooks;
     return hooks;
 }
 

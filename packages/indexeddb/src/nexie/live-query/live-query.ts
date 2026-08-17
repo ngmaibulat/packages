@@ -1,6 +1,6 @@
 import { globalEvents } from '../globals/global-events.ts';
 import { NexiePromise } from '../zone/nexie-promise.ts';
-import { newZone } from '../zone/zone.ts';
+import { newZone, rootZone, runInZone } from '../zone/zone.ts';
 import { listenForRemoteMutations } from './propagate-locally.ts';
 import { obsSetsOverlap, type ObservabilitySet } from './obs-set.ts';
 
@@ -96,6 +96,18 @@ export function liveQuery<T>(querier: () => T | PromiseLike<T>): Observable<T> {
                 running = true;
                 restart = false;
 
+                // Everything below runs in the ROOT zone, whatever zone this
+                // was called from. `run` is reached from `subscribe()` -- which
+                // may sit inside a transaction scope -- and from a mutation
+                // published on a transaction's commit, and neither of those
+                // zones is the query's. Inheriting them would parent the
+                // querier on a foreign scope and, worse, deliver `next` inside
+                // a transaction that has already completed: a database call
+                // in the observer then fails with TransactionInactiveError.
+                runInZone(rootZone, runQuery);
+            };
+
+            const runQuery = (): void => {
                 const subscr: ObservabilitySet = {};
 
                 // The zone has to be entered synchronously here, not inside a

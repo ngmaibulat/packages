@@ -22,6 +22,7 @@ import {
     IDBTransaction,
     IDBVersionChangeEvent,
     forceCloseDatabase,
+    installGlobals,
 } from "../src/index.ts";
 import fakeIndexedDBDefault from "../src/index.ts";
 
@@ -69,7 +70,11 @@ describe("dexie", () => {
     // unit tests do not reach on their own. If this breaks, something real has
     // regressed.
     it("round-trips through a Dexie database", async () => {
-        await import("../src/auto.ts");
+        // installGlobals() rather than importing ../src/auto.ts: a side-effect
+        // import runs once per module registry, and under a runner that shares
+        // one process across files (bun test) another file may already have
+        // imported it and then replaced the globals.
+        installGlobals();
         // Named import: dexie's .d.ts declares `Dexie`, and only the runtime
         // wrapper adds a default, so the default is untyped.
         const { Dexie } = await import("dexie");

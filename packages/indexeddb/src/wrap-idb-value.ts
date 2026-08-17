@@ -314,14 +314,37 @@ export function ignoreConstraints<T>(
     );
   }
 
-  request.addEventListener('error', (event) => {
+  // The listener has to be in place before the request's error event fires,
+  // which means this must be called in the same turn as the operation. Called
+  // later, the ConstraintError has already reached the transaction and aborted
+  // it -- swallowing it from the promise at that point would report a clean
+  // `undefined` for a write that took the whole transaction down.
+  if (request.readyState === 'done' && request.error) {
+    throw new TypeError(
+      'ignoreConstraints() was called after the operation already failed. ' +
+        'Call it in the same turn as the write, before awaiting anything.',
+    );
+  }
+
+  const onError = (event: Event) => {
     if (request.error?.name !== 'ConstraintError') return;
     // preventDefault stops the transaction being aborted with this error.
     // stopPropagation keeps it from reaching the transaction at all, so it is
     // not mistaken for the cause of some later, unrelated abort.
     event.preventDefault();
     event.stopPropagation();
-  });
+  };
+  // Removed once the request settles either way: a request object outlives
+  // the operation (a cursor's, for instance), and a listener left behind would
+  // keep suppressing constraint errors on whatever it did next.
+  const cleanup = () => {
+    request.removeEventListener('error', onError);
+    request.removeEventListener('success', cleanup);
+    request.removeEventListener('error', cleanup);
+  };
+  request.addEventListener('error', onError);
+  request.addEventListener('success', cleanup);
+  request.addEventListener('error', cleanup);
 
   return operation.catch((error: unknown) => {
     if (error instanceof DOMException && error.name === 'ConstraintError') {

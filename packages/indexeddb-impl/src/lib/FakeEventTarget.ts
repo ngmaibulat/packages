@@ -153,6 +153,19 @@ abstract class FakeEventTarget {
             return;
         }
 
+        // The DOM standard's "add an event listener" step 4: a listener whose
+        // type, callback and capture already appear in the list is not added
+        // again. Without this the same handler fired once per registration.
+        const duplicate = this._listeners.some(
+            (candidate) =>
+                candidate.type === type &&
+                candidate.callback === callback &&
+                candidate.capture === capture,
+        );
+        if (duplicate) {
+            return;
+        }
+
         const listener: Listener = { callback, capture, type, once };
 
         if (signal) {

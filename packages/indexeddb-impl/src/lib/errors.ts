@@ -21,16 +21,12 @@ const messages = {
         "An attempt was made to open a database using a lower version than the existing version.",
 };
 
-// Cannot set an error code on an error using the normal setter;
-// this leads to "Cannot set property code of  which has only a getter"
-const setErrorCode = (error: any, value: number) => {
-    Object.defineProperty(error, "code", {
-        value,
-        writable: false,
-        enumerable: true,
-        configurable: false,
-    });
-};
+// These are real DOMException subclasses, so `code` comes from the base class:
+// passing the legacy name to `super()` gives the right value (11 for
+// InvalidStateError, 12 for SyntaxError, 0 for the names without a legacy
+// code). An earlier version also defined `code` as an own enumerable property
+// on four of the classes, which made those four look different from the other
+// seven (`Object.keys(err)` was `["code"]`) for no change in the value.
 
 export class AbortError extends DOMException {
     constructor(message = messages.AbortError) {
@@ -53,7 +49,6 @@ export class DataCloneError extends DOMException {
 export class DataError extends DOMException {
     constructor(message = messages.DataError) {
         super(message, "DataError");
-        setErrorCode(this, 0);
     }
 }
 
@@ -66,7 +61,6 @@ export class InvalidAccessError extends DOMException {
 export class InvalidStateError extends DOMException {
     constructor(message = messages.InvalidStateError) {
         super(message, "InvalidStateError");
-        setErrorCode(this, 11);
     }
 }
 
@@ -83,16 +77,14 @@ export class ReadOnlyError extends DOMException {
 }
 
 export class SyntaxError extends DOMException {
-    constructor(message = messages.VersionError) {
+    constructor(message = messages.SyntaxError) {
         super(message, "SyntaxError");
-        setErrorCode(this, 12);
     }
 }
 
 export class TransactionInactiveError extends DOMException {
     constructor(message = messages.TransactionInactiveError) {
         super(message, "TransactionInactiveError");
-        setErrorCode(this, 0);
     }
 }
 

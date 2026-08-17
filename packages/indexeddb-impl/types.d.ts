@@ -11,7 +11,13 @@ declare const FDBRecord: any; // should be updated once TypeScript DOM types are
 declare const FDBRequest: typeof IDBRequest;
 declare const FDBTransaction: typeof IDBTransaction;
 declare const FDBVersionChangeEvent: typeof IDBVersionChangeEvent;
-declare const forceCloseDatabase: (db: typeof FDBDatabase) => void;
+declare const forceCloseDatabase: (db: IDBDatabase) => void;
+/**
+ * Install the implementation onto a global object (`globalThis` by default),
+ * as the `./auto` entry does on import. Callable again after the globals have
+ * been tampered with, which a side-effect import cannot be.
+ */
+declare const installGlobals: (target?: object) => void;
 
 export default fakeIndexedDB;
 
@@ -30,4 +36,5 @@ export {
     FDBTransaction as IDBTransaction,
     FDBVersionChangeEvent as IDBVersionChangeEvent,
     forceCloseDatabase,
+    installGlobals,
 };

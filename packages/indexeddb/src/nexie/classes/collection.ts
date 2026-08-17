@@ -561,7 +561,9 @@ export class Collection<T = any, TKey = IndexableType> {
     ): Collection<T, TKey> {
         const clone = this.clone();
         clone._addFilter((cursor, advance, stop) => {
-            if (predicate(cursor.value as T)) {
+            // Mapped like `filter()`'s predicate: with `mapToClass` installed
+            // the caller wrote the predicate against instances of the class.
+            if (predicate(clone._mapValue(cursor.value) as T)) {
                 // Stop after this record, including it only if asked.
                 advance(stop);
                 return includeStopEntry;
@@ -582,12 +584,18 @@ export class Collection<T = any, TKey = IndexableType> {
         if (!index?.multi) return this.clone();
 
         const clone = this.clone();
-        const seen = new Set<string>();
-        clone._addFilter((cursor) => {
-            const id = keyToString(cursor.primaryKey);
-            if (seen.has(id)) return false;
-            seen.add(id);
-            return true;
+        // An algorithm, not a filter: the seen-set is per ITERATION. Built
+        // once at clone time it survived into the next read of the same
+        // collection, which then found every record "already seen" -- a
+        // `distinct()` collection read twice returned nothing the second time.
+        clone._addAlgorithm(() => {
+            const seen = new Set<string>();
+            return (cursor) => {
+                const id = keyToString(cursor.primaryKey);
+                if (seen.has(id)) return false;
+                seen.add(id);
+                return true;
+            };
         });
         return clone;
     }
@@ -604,12 +612,12 @@ export class Collection<T = any, TKey = IndexableType> {
 
     modify(
         changes:
-            | ((value: T, ctx: { value: T | null }) => unknown)
+            | ((value: T, ctx: { value?: T | null }) => unknown)
             | UpdateSpec<T>,
     ): NexiePromise<number> {
         const applyChange =
             typeof changes === 'function'
-                ? (changes as (value: T, ctx: { value: T | null }) => unknown)
+                ? (changes as (value: T, ctx: { value?: T | null }) => unknown)
                 : (value: T) => {
                       applyUpdateSpec(value, changes as Record<string, unknown>);
                   };
@@ -630,7 +638,7 @@ export class Collection<T = any, TKey = IndexableType> {
             // the CRUD hooks observe these changes at all.
             return this._iterate(trans, false, (cursor) => {
                 const primaryKey = cursor.primaryKey as IndexableType;
-                const wrapper: { value: T | null } = {
+                const wrapper: { value?: T | null } = {
                     value: cursor.value,
                 };
 
@@ -642,9 +650,10 @@ export class Collection<T = any, TKey = IndexableType> {
                     return;
                 }
 
-                // A callback that nulls out ctx.value asks for the record to be
-                // removed; this is how `delete()` is expressed.
-                if (wrapper.value === null) {
+                // A callback that nulls out ctx.value -- or `delete`s it, the
+                // idiom Dexie documents -- asks for the record to be removed;
+                // this is how `delete()` is expressed.
+                if (wrapper.value === null || wrapper.value === undefined) {
                     deleteKeys.push(primaryKey);
                 } else {
                     updates.push(wrapper.value);

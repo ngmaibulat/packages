@@ -132,8 +132,22 @@ class FDBTransaction extends FakeEventTarget {
 
     // https://w3c.github.io/IndexedDB/#abort-transaction
     public _abort(errName: string | null) {
-        for (const f of this._rollbackLog.reverse()) {
-            f();
+        // Newest first, on a copy: `reverse()` mutates in place, and a log
+        // that has been replayed is spent. A rollback step that throws must
+        // not stop the others or escape -- this runs from a queued task and
+        // from a request's error path, neither of which is inside a try, so
+        // a throw here was a process-level uncaught exception. The remaining
+        // steps still run; the failure is recorded on the transaction.
+        const rollbacks = this._rollbackLog.slice().reverse();
+        this._rollbackLog = [];
+        for (const f of rollbacks) {
+            try {
+                f();
+            } catch (err) {
+                if (errName === null) {
+                    errName = err?.name ?? "UnknownError";
+                }
+            }
         }
 
         if (errName !== null) {
@@ -182,12 +196,12 @@ class FDBTransaction extends FakeEventTarget {
             // (i.e. remove it from the list of `db.connections`)
             const isUpgradeTransaction = this.mode === "versionchange";
             if (isUpgradeTransaction) {
+                // Only the upgrading connection. Every connection to a
+                // database shares one `_rawDatabase`, so a predicate on that
+                // matched all of them and emptied the list.
                 this.db._rawDatabase.connections =
                     this.db._rawDatabase.connections.filter(
-                        (connection) =>
-                            !connection._rawDatabase.transactions.includes(
-                                this,
-                            ),
+                        (connection) => connection !== this.db,
                     );
             }
             // Fire an event named abort at transaction with its bubbles attribute initialized to true.
@@ -348,7 +362,8 @@ class FDBTransaction extends FakeEventTarget {
                     const result = operation();
                     request._readyState = "done";
                     request._result = result;
-                    request._error = undefined;
+                    // `error` is a nullable attribute: null, not undefined.
+                    request._error = null;
 
                     // http://www.w3.org/TR/2015/REC-IndexedDB-20150108/#dfn-fire-a-success-event
                     // (step 1, "set state to active", is done above, before the

@@ -54,9 +54,22 @@ export interface Zone {
      * at the bottom of the import graph. It is always an ObservabilitySet.
      */
     subscr?: Record<string, unknown> | undefined;
-    /** Outstanding promises and enqueued listeners; drives `follow()`. */
+    /**
+     * Outstanding work: promises and enqueued listeners created in this zone,
+     * plus one for every child zone that currently has work of its own. That
+     * second term is what lets `follow()` on an outer scope wait for inner
+     * scopes -- see `retain`/`release`.
+     */
     pending: number;
     finalize: () => void;
+    /**
+     * Where a rejection nobody handled ends up. `follow()` installs one so an
+     * `on('populate')` subscriber, an upgrader or a fire-and-forget scope body
+     * that starts a failing operation and never looks at it still fails the
+     * whole thing, the way Dexie does. Looked up by walking the chain, so a
+     * nested zone reports to the nearest enclosing follow.
+     */
+    onunhandled?: ((reason: unknown) => void) | undefined;
 }
 
 let zoneCounter = 0;
@@ -141,13 +154,14 @@ export function newZone<R>(fn: () => R, props?: Partial<Zone>): R {
     };
 
     // A child's outstanding work counts as the parent's, so `follow()` on an
-    // outer scope waits for inner scopes too.
+    // outer scope waits for inner scopes too. The parent is charged when the
+    // child goes from idle to busy (`retain`) and paid back when it goes idle
+    // again (here), so the two always balance -- a child legitimately touches
+    // zero once per `await` in its body, and paying the parent back on every
+    // one of those, against a single up-front charge, drove the parent's
+    // counter negative and with it broke `_zoneLost` and `follow()`.
     if (!parent.global) {
-        parent.pending++;
-        const parentFinalize = parent.finalize;
-        zone.finalize = () => {
-            if (--parent.pending === 0) parentFinalize();
-        };
+        zone.finalize = () => release(parent);
     }
 
     return runInZone(zone, fn);
@@ -183,11 +197,31 @@ export function isVip(): boolean {
     return false;
 }
 
-/** Retain/release the zone's work counter. Used by NexiePromise. */
+/**
+ * Retain/release the zone's work counter. Used by NexiePromise.
+ *
+ * A zone going from idle to busy retains its parent, and `finalize` (installed
+ * by `newZone`) releases it again when the zone goes idle -- so a parent's
+ * counter carries "how many children are busy" alongside its own promises,
+ * and never goes negative.
+ */
 export function retain(zone: Zone): void {
-    if (!zone.global) zone.pending++;
+    if (zone.global) return;
+    if (zone.pending++ === 0 && zone.parent && !zone.parent.global) {
+        retain(zone.parent);
+    }
 }
 
 export function release(zone: Zone): void {
     if (!zone.global && --zone.pending === 0) zone.finalize();
+}
+
+/** The nearest unhandled-rejection sink up the chain, if any. */
+export function findUnhandledSink(
+    zone: Zone,
+): ((reason: unknown) => void) | undefined {
+    for (let z: Zone | null = zone; z; z = z.parent) {
+        if (z.onunhandled) return z.onunhandled;
+    }
+    return undefined;
 }

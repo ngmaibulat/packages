@@ -1,5 +1,4 @@
 import { describe as suite, it as test, afterEach } from 'node:test';
-import { readFileSync } from 'node:fs';
 import { assert } from 'chai';
 
 import { dispose, freshName, Nexie } from './utils.ts';
@@ -27,30 +26,10 @@ suite('Nexie.semVer', () => {
         assert.strictEqual(Nexie.semVer, '0.0.0-src');
     });
 
-    test('the built bundle carries the manifest version', () => {
-        const manifest = JSON.parse(
-            readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
-        ) as { version: string };
-
-        let bundle: string;
-        try {
-            bundle = readFileSync(
-                new URL('../../dist/nexie.js', import.meta.url),
-                'utf8',
-            );
-        } catch {
-            // A working tree that has not been built yet. CI always builds
-            // first, so the check still gates every release.
-            return;
-        }
-
-        assert.include(
-            bundle,
-            `"${manifest.version}"`,
-            'tsdown must substitute __NEXIE_VERSION__ with the package version',
-        );
-        assert.notInclude(bundle, '0.0.0-src');
-    });
+    // Whether the BUILT bundle carries the manifest version is asserted by
+    // scripts/postbuild.mjs as part of `pnpm run build`, not here: a test over
+    // dist/ went red after every `pnpm bump` until someone rebuilt, and the
+    // build is where a substitution failure belongs anyway.
 });
 
 suite('Nexie.debug', () => {
